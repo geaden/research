@@ -8,8 +8,8 @@ import matplotlib
 import matplotlib.pyplot as plt
 from step import ShortStepSize, DecayingStepSize
 from utils import log, non_singular_matrix, significant_figures, ensure_non_zero
-from objectives import Objective, MSE, LogisticRegression
-from lmo import random_euclidean_ball, MinLinearDirectionL2Ball
+from objectives import Objective, MSE, LogisticRegression, Lasso, AnisoQuadObjective
+from lmo import random_euclidean_ball, MinLinearDirectionL2Ball, ShiftedBall
 from algorithms import BaseInexactFW, InexactFW, AdaptiveInexactFW
 
 
@@ -28,17 +28,17 @@ class ExperimentData:
     delta: float
 
 
-def setup(verbose: Optional[bool] = False) -> list[ExperimentData]:
+def setup_experiments(verbose: Optional[bool] = False) -> list[ExperimentData]:
     """
     Setup experiment environment.
     """
     np.random.seed(2025)
-    R = 10
+    R = 200
     N = 150
     delta = 1e-4
-    A = non_singular_matrix(R, 0.75, 1.0, -1.0, 1.0)
-    b = np.random.randn(R)
-    L0 = np.linalg.eigvals(A).max().astype(np.longdouble)
+    A = non_singular_matrix(R, 0.75, 1.0, -1.0, 1.0).astype(np.float64)
+    b = np.random.randn(R).astype(np.float64)
+    L0 = np.linalg.eigvals(A).max().astype(np.float64)
     log(f"{L0=}", verbose)
 
     experiments = []
@@ -48,7 +48,7 @@ def setup(verbose: Optional[bool] = False) -> list[ExperimentData]:
         ExperimentData(
             title=r"MSE (на шаре)",
             filename_prefix="mse_on_ball",
-            radius_grid=np.linspace(0.2, 0.7, num=N),
+            radius_grid=np.linspace(0.2, 1.2, num=N),
             obj=MSE(A, b),
             alpha=0.02,
             R=R,
@@ -74,18 +74,53 @@ def setup(verbose: Optional[bool] = False) -> list[ExperimentData]:
         )
     )
 
+    # 3. Lasso
+    b_star = A @ np.random.randn(R) + 0.1 * np.random.randn(R)
+    lam = 0.1
+    experiments.append(
+        ExperimentData(
+            title="LASSO (на шаре)",
+            filename_prefix="logreg_on_ball",
+            radius_grid=np.linspace(1.0, 5.0, num=N),
+            obj=Lasso(A, b_star, lam),
+            alpha=0.02,
+            R=R,
+            L=L0,
+            N=N,
+            delta=delta,
+        )
+    )
+
+    # 4. Quadratic norm
+    Q = np.diag([R] + [1] * (R - 1))
+    experiments.append(
+        ExperimentData(
+            title=r"$\frac{1}{2} ||x||^2$ (на шаре)",
+            filename_prefix="quad_norm_on_ball",
+            radius_grid=np.linspace(0.2, 0.7, num=N),
+            obj=AnisoQuadObjective(Q=Q),
+            alpha=0.02,
+            R=R,
+            L=np.linalg.eigvals(Q).max().astype(np.float64),
+            N=N,
+            delta=delta,
+        )
+    )
+
     return experiments
 
 
 def run_experiments(verbose: bool, interactive: bool):
-    experiments_data = setup(verbose=verbose)
+    experiments_data = setup_experiments(verbose=verbose)
 
     for t in [InexactFW, AdaptiveInexactFW]:
         _run_experiment_iterations_per_ball_size(
-            t, experiments_data, interactive, verbose
+            t, experiments_data[:-2], interactive, verbose
         )
 
-    _run_adaptive_convergence_based_on_alpha(experiments_data, interactive, verbose)
+    _run_adaptive_convergence_based_on_alpha(
+        experiments_data[:-2], interactive, verbose
+    )
     _run_comparison_convergence_non_adaptive_and_adaptive(experiments_data, interactive)
 
 
@@ -207,16 +242,19 @@ def _run_comparison_convergence_non_adaptive_and_adaptive(
     """
     Comparison of non-adaptive and adaptive convergence.
     """
-    expected_iterations_stack = [60, 60]
-    data = dataclasses.replace(experiments_data[1])
+    expected_iterations_stack = [50, 50]
+    data = dataclasses.replace(experiments_data[-1])
     data.filename_prefix = "nonadaptive_adaptive_comparison_convergence.pgf"
+    radius = 2.0
+    x0 = np.ones(data.R) * 0.5 * radius
+    lmo = MinLinearDirectionL2Ball(radius=radius)
 
     algorithms = [
         (
-            r"Неадаптивный вариант с шагом $\frac{k}{k+2}$ на шаре",
+            r"Неадаптивный вариант с шагом $\frac{2}{k+2}$ на шаре",
             InexactFW(
                 data.obj,
-                lmo=MinLinearDirectionL2Ball(radius=8.0),
+                lmo=lmo,
                 step_size=DecayingStepSize(),
                 N=data.N,
                 L=data.L,
@@ -228,7 +266,7 @@ def _run_comparison_convergence_non_adaptive_and_adaptive(
             r"Адаптивный вариант на шаре",
             AdaptiveInexactFW(
                 data.obj,
-                lmo=MinLinearDirectionL2Ball(radius=2.0),
+                lmo=lmo,
                 step_size=ShortStepSize(data.alpha),
                 N=data.N,
                 L=data.L,
@@ -240,9 +278,6 @@ def _run_comparison_convergence_non_adaptive_and_adaptive(
 
     count = 1
     for title, algorithm in algorithms:
-        radius = algorithm._lmo._r
-        x0 = random_euclidean_ball(data.R, radius=radius)
-
         algorithm.run(x0)
 
         _do_plot_convergence(
@@ -308,11 +343,7 @@ def _do_plot_iterations_per_ball_size(
 
     plt.legend(["Фактическое число итераций", "Теоретическая оценка"])
 
-    if show_plot:
-        plt.show()
-
-        if not interactive:
-            plt.savefig("images/" + filename)
+    _show_plot(filename, show_plot, interactive)
 
 
 def _do_plot_convergence(
@@ -326,6 +357,7 @@ def _do_plot_convergence(
 ) -> None:
     clear_figure = count == 1
     show_ylabel = count == 1
+    show_plot = count == 2
 
     if not interactive:
         _preamble()
@@ -348,7 +380,13 @@ def _do_plot_convergence(
     if alpha:
         plt.legend([r"$\alpha={}$".format(a) for a in alpha])
 
-    if count == 2:
-        plt.show()
-        if not interactive:
-            plt.savefig("images/" + filename)
+    _show_plot(filename, show_plot, interactive)
+
+
+def _show_plot(filename: str, show_plot: bool, interactive: bool) -> None:
+    if not show_plot:
+        return
+
+    plt.show()
+    if not interactive:
+        plt.savefig("images/" + filename)

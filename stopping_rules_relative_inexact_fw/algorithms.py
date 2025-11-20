@@ -23,7 +23,7 @@ class BaseInexactFW(ABC):
     Representation of abase inexact Frank-Wolfe.
     """
 
-    _verbose = False
+    _verbose = True
 
     def __init__(
         self,
@@ -32,7 +32,7 @@ class BaseInexactFW(ABC):
         lmo: LinearMinimizationOracle,
         L: np.float64,
         alpha: float = 0.0,
-        delta: float = 10e-4,
+        delta: float = 1e-4,
         N: int = 1000,
     ) -> None:
         """
@@ -109,7 +109,9 @@ class BaseInexactFW(ABC):
             0,
         )
         N = lhs + rhs
-        return int(N)
+        if np.isinf(N):
+            return 1e4
+        return max(5 * 1e3, int(N))
 
     @property
     def verbose(self) -> bool:
@@ -132,7 +134,6 @@ class BaseInexactFW(ABC):
         Return dual gap alike parameter for inexact relative gradient.
         """
         gap = dual_gap(inexact_relative_grad, d)
-        log(gap, verbose=self._verbose)
         return np.float64(-(gap + self._alpha / (1 - self._alpha) * M * D))
 
     def relative_inexact_gradient(
@@ -151,7 +152,7 @@ class InexactFW(BaseInexactFW):
     """
 
     def run(self, x0: np.ndarray) -> Result:
-        x = x0.copy()
+        x = x0.copy().astype(np.float64)
 
         # Close to zero, but not zero to ensure non division by zero
         M = D = ensure_non_zero(0)
@@ -168,7 +169,9 @@ class InexactFW(BaseInexactFW):
 
             gap = self.dual_gap_alike_param(inexact_relative_grad, d, M, D)
 
-            if gap**2 <= self._delta:
+            stopping_rule = np.square(gap)
+
+            if np.isnan(stopping_rule) or stopping_rule <= self._delta:
                 break
 
             h = self._step_size(k, inexact_relative_grad, d, self._L, M, D)
@@ -191,7 +194,7 @@ class AdaptiveInexactFW(BaseInexactFW):
 
     def run(self, x0: np.ndarray) -> np.ndarray:
         L = self._L / 2
-        x = x0.copy()
+        x = x0.copy().astype(np.float64)
 
         M = D = ensure_non_zero(0)
 
@@ -207,7 +210,7 @@ class AdaptiveInexactFW(BaseInexactFW):
 
             gap = self.dual_gap_alike_param(inexact_relative_grad, d, M, D)
 
-            if gap**2 <= self._delta:
+            if np.isnan(gap) or np.square(gap) <= self._delta:
                 break
 
             adapted = False

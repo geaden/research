@@ -46,7 +46,7 @@ def non_singular_matrix(
     upper_tri = np.random.uniform(MinM, MaxM, size=(N, N))
     lower_tri = np.tri(N, k=-1, dtype=np.float64)
     result_matrix = np.diag(main_diag) + lower_tri * upper_tri
-    return result_matrix.T
+    return result_matrix.T.astype(np.float64)
 
 
 def ensure_non_zero(x: np.float64) -> np.float64:
@@ -54,4 +54,4 @@ def ensure_non_zero(x: np.float64) -> np.float64:
     Ensure that |x| is non-zero.
     Close to zero, but not zero to ensure non division by zero occurrence.
     """
-    return max(x, 1e-12)
+    return max(x, 1e-20)

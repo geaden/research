@@ -1,6 +1,6 @@
 import argparse
 import sys
-from experiments import setup, run_experiments
+from experiments import setup_experiments, run_experiments
 
 
 def main():

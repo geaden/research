@@ -60,3 +60,48 @@ class LogisticRegression(Objective):
         z = self._y * (self._A @ x)
         coeff = -self._y / (np.exp(z) + 1)
         return self._A.T @ coeff / self._A.shape[0]
+
+
+class Lasso(Objective):
+    """
+    Least Absolute Shrinkage and Selection Operator.
+    """
+
+    def __init__(self, A: np.ndarray, b: np.ndarray, lam: np.float64):
+        self._A = A.copy()
+        self._b = b.copy()
+        self._lam = lam
+
+    def __call__(self, x: np.ndarray) -> np.ndarray:
+        return 0.5 * np.linalg.norm(self._A @ x - self._b) ** 2 + self._lam * np.sum(
+            np.abs(x)
+        )
+
+    def grad(self, x: np.ndarray) -> np.ndarray:
+        return self._A.T @ (self._A @ x - self._b)
+
+
+class QuadNormObjective(Objective):
+    """
+    Quadratic norm objective function.
+
+    1/2 x^T @ x
+    """
+
+    def __call__(self, x: np.ndarray) -> np.ndarray:
+        return 0.5 * np.dot(x, x)
+
+    def grad(self, x: np.ndarray) -> np.ndarray:
+        return x
+
+
+class AnisoQuadObjective(Objective):
+
+    def __init__(self, Q: np.ndarray):
+        self._Q = Q.copy()
+
+    def __call__(self, x: np.ndarray) -> np.ndarray:
+        return 0.5 * x @ self._Q @ x
+
+    def grad(self, x: np.ndarray) -> np.ndarray:
+        return self._Q @ x
