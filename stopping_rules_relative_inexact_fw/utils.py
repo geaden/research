@@ -4,11 +4,12 @@ import time
 import numpy as np
 
 
-def check_alpha(alpha: float) -> None:
+def check_alpha(alpha: float) -> float:
     """
     Check if alpha is in [0, 1].
     """
     assert 0 <= alpha <= 1, f"Incorrect value of alpha={alpha}"
+    return alpha
 
 
 def dual_gap(inexact_relative_grad: np.ndarray, d: np.ndarray) -> np.float64:
@@ -26,10 +27,9 @@ def log(message: str, verbose: bool = False):
         print(f"LOG {time.time()}: {message}")
 
 
-def significant_figures(x: float) -> float:
-    """Return significant figures of |x|."""
-    powers = np.floor(np.log10(x))
-    return 10**powers * np.floor(x / 10**powers)
+def significant_figures(x: float, n: int = 1) -> float:
+    """Return significant |n| digits of |x|."""
+    return float(f"{x:.{n}g}")
 
 
 def non_singular_matrix(

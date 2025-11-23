@@ -63,8 +63,7 @@ class ShortStepSize(StepSize):
         Args:
             alpha (float): relative inexactness [0,1].
         """
-        self._alpha = alpha
-        check_alpha(self._alpha)
+        self._alpha = check_alpha(alpha)
 
     def __call__(
         self,

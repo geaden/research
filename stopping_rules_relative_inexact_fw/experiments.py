@@ -7,10 +7,18 @@ import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
 from step import ShortStepSize, DecayingStepSize
-from utils import log, non_singular_matrix, significant_figures, ensure_non_zero
+from utils import (
+    log,
+    non_singular_matrix,
+    significant_figures,
+    ensure_non_zero,
+    check_alpha,
+)
 from objectives import Objective, MSE, LogisticRegression, Lasso, AnisoQuadObjective
-from lmo import random_euclidean_ball, MinLinearDirectionL2Ball, ShiftedBall
+from lmo import random_euclidean_ball, MinLinearDirectionL2Ball
 from algorithms import BaseInexactFW, InexactFW, AdaptiveInexactFW
+
+_SOLID_LINE: tuple[str, str] = ("solid", "b")
 
 
 @dataclass
@@ -80,7 +88,7 @@ def setup_experiments(verbose: Optional[bool] = False) -> list[ExperimentData]:
     experiments.append(
         ExperimentData(
             title="LASSO (на шаре)",
-            filename_prefix="logreg_on_ball",
+            filename_prefix="lasso_on_ball",
             radius_grid=np.linspace(1.0, 5.0, num=N),
             obj=Lasso(A, b_star, lam),
             alpha=0.02,
@@ -113,15 +121,19 @@ def setup_experiments(verbose: Optional[bool] = False) -> list[ExperimentData]:
 def run_experiments(verbose: bool, interactive: bool):
     experiments_data = setup_experiments(verbose=verbose)
 
-    for t in [InexactFW, AdaptiveInexactFW]:
+    for fw in [InexactFW, AdaptiveInexactFW]:
         _run_experiment_iterations_per_ball_size(
-            t, experiments_data[:-2], interactive, verbose
+            fw, experiments_data[:-2], interactive, verbose
         )
 
     _run_adaptive_convergence_based_on_alpha(
-        experiments_data[:-2], interactive, verbose
+        experiments_data[:-2],
+        interactive,
+        verbose,
     )
-    _run_comparison_convergence_non_adaptive_and_adaptive(experiments_data, interactive)
+    _run_comparison_convergence_non_adaptive_and_adaptive(
+        experiments_data, interactive, verbose
+    )
 
 
 def _run_experiment_iterations_per_ball_size(
@@ -182,7 +194,8 @@ def _run_adaptive_convergence_based_on_alpha(
     """
     Convergence based on alpha.
     """
-    expected_iterations_stack = [35, 60]
+    log(_title("Convergence based on alpha"), verbose=verbose)
+    expected_iterations_stack = [60, 60]
     count = 1
     for data in experiments_data:
         hist = []
@@ -201,22 +214,25 @@ def _run_adaptive_convergence_based_on_alpha(
 
         # Select optimal alpha
         eps = 8 * np.sqrt(data.delta)
+        log(f"{count}: eps={eps}", verbose=verbose)
         x = (eps - np.sqrt(data.delta)) / (2 * result.M * result.D)
-        alpha = ensure_non_zero((-(1 + x) + np.sqrt((1 + x) ** 2 + 4 * x)) / 2)
-        log(f"{count}: optimal alpha={alpha}", verbose=verbose)
+        assert x > 0, "x must be positive"
+        alpha = check_alpha((-(1 + x) + np.sqrt((1 + x) ** 2 + 4 * x)) / 2)
 
-        alphas = np.linspace(ensure_non_zero(0), 2 * alpha + eps, num=7)[1:]
-        alphas = list(set([significant_figures(alpha) for alpha in alphas]))
+        alphas = np.linspace(ensure_non_zero(0), 2 * alpha + eps, num=4)[1:]
+        alphas = set([significant_figures(alpha, 3) for alpha in alphas])
+        alphas = [check_alpha(alpha) for alpha in alphas]
         alphas.sort()
+        log(f"{count}: optimal alpha={alpha}, range={alphas}", verbose=verbose)
 
         for alpha in alphas:
             algorithm = AdaptiveInexactFW(
                 data.obj,
                 lmo=MinLinearDirectionL2Ball(radius=radius),
-                step_size=ShortStepSize(data.alpha),
+                step_size=ShortStepSize(alpha),
                 N=data.N,
                 L=data.L,
-                alpha=data.alpha,
+                alpha=alpha,
                 delta=data.delta,
             )
             algorithm.run(x0)
@@ -237,12 +253,15 @@ def _run_adaptive_convergence_based_on_alpha(
 
 
 def _run_comparison_convergence_non_adaptive_and_adaptive(
-    experiments_data: list[ExperimentData], interactive: Optional[bool] = False
+    experiments_data: list[ExperimentData],
+    interactive: Optional[bool] = False,
+    verbose: Optional[bool] = False,
 ) -> None:
     """
     Comparison of non-adaptive and adaptive convergence.
     """
-    expected_iterations_stack = [50, 50]
+    log(_title("Comparison of non-adaptive and adaptive convergence"), verbose=verbose)
+    expected_iterations_stack = [50, 6]
     data = dataclasses.replace(experiments_data[-1])
     data.filename_prefix = "nonadaptive_adaptive_comparison_convergence.pgf"
     radius = 2.0
@@ -352,6 +371,7 @@ def _do_plot_convergence(
     fx: list[np.ndarray],
     alpha: list[float],
     interactive: bool = False,
+    lines: list[tuple[str, str]] = [],
     limit: int = 100,
     count: int = 1,
 ) -> None:
@@ -367,9 +387,11 @@ def _do_plot_convergence(
 
     plt.subplot(1, 2, count)
     for f in fx:
+        style, _ = (lines or [_SOLID_LINE]).pop()
         plt.plot(
             range(0, len(f[:limit])),
             f[:limit],
+            linestyle=style,
         )
         plt.title(label)
         plt.xlabel(r"Номер итерации, $k$")
@@ -390,3 +412,7 @@ def _show_plot(filename: str, show_plot: bool, interactive: bool) -> None:
     plt.show()
     if not interactive:
         plt.savefig("images/" + filename)
+
+
+def _title(title: str) -> str:
+    return f"\n*** {title} ***\n"
