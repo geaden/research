@@ -261,7 +261,7 @@ def _run_comparison_convergence_non_adaptive_and_adaptive(
     Comparison of non-adaptive and adaptive convergence.
     """
     log(_title("Comparison of non-adaptive and adaptive convergence"), verbose=verbose)
-    expected_iterations_stack = [50, 6]
+    expected_iterations_stack = [12, 6]
     data = dataclasses.replace(experiments_data[-1])
     data.filename_prefix = "nonadaptive_adaptive_comparison_convergence.pgf"
     radius = 2.0
