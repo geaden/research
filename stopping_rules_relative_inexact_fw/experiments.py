@@ -245,6 +245,7 @@ def _run_adaptive_convergence_based_on_alpha(
             hist,
             alpha=alphas,
             interactive=interactive,
+            lines=[("-", "o"), ("--", "b"), ("-.", "g")],
             limit=expected_iterations_stack.pop(),
             count=count,
         )
@@ -372,6 +373,7 @@ def _do_plot_convergence(
     alpha: list[float],
     interactive: bool = False,
     lines: list[tuple[str, str]] = [],
+    markers: list[str] = [],
     limit: int = 100,
     count: int = 1,
 ) -> None:
@@ -388,10 +390,12 @@ def _do_plot_convergence(
     plt.subplot(1, 2, count)
     for f in fx:
         style, _ = (lines or [_SOLID_LINE]).pop()
+        marker = (markers or [None]).pop()
         plt.plot(
             range(0, len(f[:limit])),
             f[:limit],
             linestyle=style,
+            marker=marker,
         )
         plt.title(label)
         plt.xlabel(r"Номер итерации, $k$")
