@@ -117,7 +117,7 @@ class AbsoluteInexactFW(BaseFW):
             d = v - x
 
             dual_gap = -np.dot(g, d)
-            if dual_gap**2 <= self._delta:
+            if dual_gap**2 <= self._delta**2:
                 break
 
             gamma_t = max(min(dual_gap / (2 * self._L * np.linalg.norm(d) ** 2), 1), 0)

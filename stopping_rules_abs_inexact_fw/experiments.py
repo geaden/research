@@ -10,6 +10,7 @@ from algorithms import AbsoluteInexactFW, AbsoluteInexactGradient
 from common.lmo import SimplexLMO
 from common.plot_utils import preamble, do_show_plot, SOLID_LINE
 from common.experiment_utils import title
+from common.latex_utils import latex_table
 
 
 @dataclass
@@ -27,11 +28,11 @@ class ExperimentData:
     delta: float
 
 
-def setup_experiments(verbose: bool, interactive: bool) -> list[ExperimentData]:
+def setup_experiments(verbose: bool, _: bool) -> list[ExperimentData]:
     rng = np.random.default_rng(2025)
     n = 200
-    N = 250
-    delta = 1e-4
+    N = 350
+    delta = 0.1
     A = non_singular_matrix(n, 0.75, 1.0, -1.0, 1.0, rng).astype(np.float64)
     b = rng.random(n).astype(np.float64)
     L0 = np.linalg.eigvals(A).max().astype(np.float64)
@@ -85,75 +86,69 @@ def _run_experiment__theoretical_convergence_iteration_numbers(
 
     data = experiments[-1]
 
-    estimates: list[Estimate] = [
-        InductionConvexEstimate(
-            L=data.L,
-            D=data.D,
-            delta=data.delta,
-        ),
-    ]
-
-    # GapSum
-    alg = AbsoluteInexactFW(
-        obj=data.obj,
-        inexact_grad=data.gradient,
-        lmo=SimplexLMO(),
-        L=data.L,
-        N=data.N,
-        delta=data.delta,
-    )
-    result = alg.run(data.x0)
-    estimates.append(
-        GapSumEstimate(
-            obj=data.obj,
-            L=data.L,
-            D=data.D,
-            delta=data.delta,
-            x0=result.x0,
-            x_opt=result.x_opt,
-        )
-    )
-
-    # Plot
-    count = 1
-
     if not interactive:
         preamble()
 
-    for estimate in estimates:
-        clear_figure = count == 1
-        show_ylabel = count == 1
+    deltas = [0.01, 0.5, 0.8]
 
-        if clear_figure:
-            plt.figure(plt.figure(figsize=(12, 6), dpi=100))
+    for delta in deltas:
+        estimates: list[Estimate] = [
+            InductionConvexEstimate(
+                L=data.L,
+                D=data.D,
+                delta=delta,
+            ),
+        ]
 
-        xvals = range(1, data.N + 1)
-        yvals = [estimate.run(N) for N in xvals]
-        plt.subplot(1, len(estimates), count)
-        # Theoretical
-        plt.plot(xvals, yvals, color="r", linestyle="--")
-        # TODO(geaden): Bring back experimental values
-        # Experimental
-        # plt.plot(
-        #     range(len(alg.history)),
-        #     [data.obj(x) - data.obj(result.x_opt) for x in alg.history],
-        #     color="b",
-        #     linestyle="-",
-        # )
-
-        plt.xlabel(r"Количество итераций, $N$")
-        if show_ylabel:
-            plt.ylabel(r"$f(x_N)-f^*$")
-
-        plt.title(estimate.__doc__, pad=20)
-
-        do_show_plot(
-            filename="theoretical_convergence.pgf",
-            show_plot=count == len(estimates),
-            interactive=interactive,
+        # GapSum
+        alg = AbsoluteInexactFW(
+            obj=data.obj,
+            inexact_grad=data.gradient,
+            lmo=SimplexLMO(),
+            L=data.L,
+            N=data.N,
+            delta=delta,
+        )
+        result = alg.run(data.x0)
+        estimates.append(
+            GapSumEstimate(
+                obj=data.obj,
+                L=data.L,
+                D=data.D,
+                delta=delta,
+                x0=result.x0,
+                x_opt=result.x_opt,
+            )
         )
 
-        count += 1
+        # Plot
+        count = 1
+
+        plt.figure(plt.figure(figsize=(12, 6), dpi=100))
+
+        for estimate in estimates:
+            show_ylabel = count == 1
+
+            xvals = range(1, data.N + 1)
+            yvals = [estimate.run(x) for x in xvals]
+            plt.subplot(1, len(estimates), count)
+            # Theoretical
+            plt.plot(xvals, yvals, color="r", linestyle="--")
+
+            plt.xlabel(r"Количество итераций, $N$")
+            if show_ylabel:
+                plt.ylabel(r"$f(x_N)-f^*$")
+
+            plt.title(rf"{estimate.__doc__} $\Delta={data.delta}$", pad=20)
+            plt.legend(deltas)
+
+            do_show_plot(
+                filename="convergence_iterations.pgf",
+                show_plot=count == len(estimates) * len(deltas),
+                interactive=interactive,
+            )
+
+            count += 1
 
 
 def _run_experiment__convergence_based_on_delta(
@@ -161,11 +156,28 @@ def _run_experiment__convergence_based_on_delta(
 ):
     log(title("Convergence based on delta"), verbose=verbose)
 
-    lines = [("-", "b"), ("--", "orange"), ("-.", "g"), (":", "r")]
-
     data = experiments[-1]
 
-    deltas = [0.0001, 0.001, 0.01, 0.1]
+    deltas = [
+        0,
+        0.00001,
+        0.00005,
+        0.0001,
+        0.0005,
+        0.001,
+        0.002,
+        0.005,
+        0.01,
+        0.02,
+        0.05,
+        0.1,
+        0.5,
+        0.6,
+        0.7,
+        0.8,
+        0.9,
+        1.0,
+    ]
     deltas = [significant_figures(delta, 3) for delta in deltas]
 
     count = 1
@@ -185,7 +197,7 @@ def _run_experiment__convergence_based_on_delta(
             inexact_grad=data.gradient,
             lmo=SimplexLMO(),
             L=data.L,
-            N=250,
+            N=data.N,
             delta=delta,
         )
         alg.run(data.x0)
@@ -195,10 +207,9 @@ def _run_experiment__convergence_based_on_delta(
 
         plt.xlabel(r"Количество итераций, $k$")
         if show_ylabel:
-            plt.ylabel(r"f(x^k)")
+            plt.ylabel(r"$f(x^k)$")
 
-        linestyle, color = lines.pop()
-        plt.plot(xvals, yvals, color=color, linestyle=linestyle)
+        plt.plot(xvals, yvals)
 
         plt.legend(deltas)
 
@@ -209,24 +220,18 @@ def _run_experiment__convergence_based_on_delta(
         )
 
         log(f"{delta=}, N={len(alg.history)}", verbose=verbose)
-        values.append((delta, len(alg.history)))
+        values.append((delta, len(alg.history) - 1))
 
         count += 1
 
     # Print table
-    print(r"\begin{table}[!h]")
-    print(r" \caption{Количество итераций для различных $\Delta$}")
-    print(r"  \begin{center}")
-    print(r"    \begin{tabular}{||c c||}")
-    print(r"        \hline")
-    print(r"        $\Delta$ & N \\ [0.5ex]")
-    print(r"        \hline\hline")
-    for delta, N in values:
-        print(rf"        {delta} & {N} \\")
-        print(r"        \hline")
-    print(r"    \end{tabular}")
-    print(r"  \end{center}")
-    print(r"\end{table}")
+    print(
+        latex_table(
+            caption=r"Полученное количество итераций в зависимости от значений $\Delta$",
+            values=values,
+            headers=[r"$\Delta$", "$N$"],
+        )
+    )
 
 
 def run_experiments(verbose: bool, interactive: bool):

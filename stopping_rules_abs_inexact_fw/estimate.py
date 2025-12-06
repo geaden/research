@@ -6,6 +6,9 @@ from common.objectives import Objective
 
 
 class Estimate:
+    """
+    Representation of theoretical estimate.
+    """
 
     def __init__(
         self,
@@ -25,7 +28,7 @@ class Estimate:
             N (int): iteration numbers
 
         Returns:
-            list[np.ndarray]: list of estimated vectors.
+            np.ndarray: value of residual.
         """
         raise NotImplementedError()
 
