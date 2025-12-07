@@ -8,7 +8,7 @@ def latex_table(
 
     columns = " ".join(["c" for _ in headers])
     heads = " & ".join(headers)
-    table = [r"\begin{table}[!h]"]
+    table = [r"\begin{table}[H]"]
     table += [rf"    \caption{{{caption}}}"]
     table += [r"    \begin{center}"]
     table += [rf"        \begin{{tabular}}{{||{columns}||}}"]

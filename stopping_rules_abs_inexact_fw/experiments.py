@@ -1,16 +1,31 @@
 """Module contains experiment main entry points."""
 
 from dataclasses import dataclass
+import itertools
 import numpy as np
 import matplotlib.pyplot as plt
-from common.objectives import Objective, MSE, LogisticRegression
-from common.utils import non_singular_matrix, log, significant_figures
-from estimate import Estimate, InductionConvexEstimate, GapSumEstimate
+
 from algorithms import AbsoluteInexactFW, AbsoluteInexactGradient
-from common.lmo import SimplexLMO
-from common.plot_utils import preamble, do_show_plot, SOLID_LINE
 from common.experiment_utils import title
+from common.utils import log
 from common.latex_utils import latex_table
+from common.lmo import SimplexLMO, MinLinearDirectionL2BallLMO, ShiftedBallLMO
+from common.math_utils import non_singular_matrix, significant_figures
+from common.objectives import Objective, MSE, LogisticRegression
+from common.plot_utils import preamble, do_show_plot
+from estimate import Estimate, InductionConvexEstimate, GapSumEstimate
+
+rng = np.random.default_rng(73)
+
+# Absolute noise
+_DELTA = 0.1
+
+_LMOS = [
+    SimplexLMO(),
+    MinLinearDirectionL2BallLMO(radius=1.0),
+    MinLinearDirectionL2BallLMO(radius=10.0),
+    ShiftedBallLMO(center=1.0, radius=5.0),
+]
 
 
 @dataclass
@@ -20,7 +35,6 @@ class ExperimentData:
     title: str
     filename_prefix: str
     obj: Objective
-    gradient: AbsoluteInexactGradient
     x0: np.ndarray
     L: np.float64
     D: np.float64
@@ -28,32 +42,37 @@ class ExperimentData:
     delta: float
 
 
+def _create_deltas(num: int, start: float, end: float) -> list[float]:
+    deltas = np.linspace(start, end, endpoint=False, num=num)
+    deltas = [significant_figures(delta, 3) for delta in deltas]
+    return deltas
+
+
 def setup_experiments(verbose: bool, _: bool) -> list[ExperimentData]:
-    rng = np.random.default_rng(2025)
-    n = 200
-    N = 350
-    delta = 0.1
+    n: int = 200  # problem dimension
+    N: int = 350  # maximum number of iterations if stopping rule is unreached
+
     A = non_singular_matrix(n, 0.75, 1.0, -1.0, 1.0, rng).astype(np.float64)
     b = rng.random(n).astype(np.float64)
     L0 = np.linalg.eigvals(A).max().astype(np.float64)
     log(f"{L0=}", verbose)
+
     x0 = rng.random(n).astype(np.float64)
 
-    experiments = []
+    experiments: list[ExperimentData] = []
 
     # 1. MSE
     obj = MSE(A, b)
     experiments.append(
         ExperimentData(
-            title=r"MSE",
+            title="MSE",
             filename_prefix="mse",
             obj=obj,
-            gradient=AbsoluteInexactGradient(obj, rng, delta),
             x0=x0,
             D=1.0,
             L=L0,
-            N=N,
-            delta=delta,
+            N=500,
+            delta=_DELTA,
         )
     )
 
@@ -65,12 +84,11 @@ def setup_experiments(verbose: bool, _: bool) -> list[ExperimentData]:
             title="Функция ошибки\nлогистической регрессии",
             filename_prefix="logreg",
             obj=obj,
-            gradient=AbsoluteInexactGradient(obj, rng, delta),
             x0=x0,
             D=1.0,
             L=L0,
             N=N,
-            delta=delta,
+            delta=_DELTA,
         )
     )
 
@@ -86,69 +104,68 @@ def _run_experiment__theoretical_convergence_iteration_numbers(
 
     data = experiments[-1]
 
+    # By induction
+    estimates: list[Estimate] = [
+        InductionConvexEstimate(
+            L=data.L,
+            D=data.D,
+            delta=data.delta,
+        ),
+    ]
+
+    # By sum of gaps
+    alg = AbsoluteInexactFW(
+        obj=data.obj,
+        inexact_grad=AbsoluteInexactGradient(data.obj, rng, data.delta),
+        lmo=SimplexLMO(),
+        L=data.L,
+        N=data.N,
+        delta=data.delta,
+    )
+    result = alg.run(data.x0)
+    estimates.append(
+        GapSumEstimate(
+            obj=data.obj,
+            L=data.L,
+            D=data.D,
+            delta=data.delta,
+            x0=result.x0,
+            x_opt=result.x_opt,
+        )
+    )
+
+    # Plot
     if not interactive:
         preamble()
 
-    deltas = [0.01, 0.5, 0.8]
+    count = 1
 
-    for delta in deltas:
-        estimates: list[Estimate] = [
-            InductionConvexEstimate(
-                L=data.L,
-                D=data.D,
-                delta=delta,
-            ),
-        ]
+    for estimate in estimates:
+        show_ylabel = count == 1
+        clear_figure = count == 1
 
-        # GapSum
-        alg = AbsoluteInexactFW(
-            obj=data.obj,
-            inexact_grad=data.gradient,
-            lmo=SimplexLMO(),
-            L=data.L,
-            N=data.N,
-            delta=delta,
-        )
-        result = alg.run(data.x0)
-        estimates.append(
-            GapSumEstimate(
-                obj=data.obj,
-                L=data.L,
-                D=data.D,
-                delta=delta,
-                x0=result.x0,
-                x_opt=result.x_opt,
-            )
+        if clear_figure:
+            plt.figure(figsize=(12, 6), dpi=100)
+
+        xvals = range(1, data.N + 1)
+        yvals = [estimate.run(x) for x in xvals]
+        plt.subplot(1, len(estimates), count)
+        # Theoretical
+        plt.plot(xvals, yvals, color="r", linestyle="--")
+
+        plt.xlabel(r"Количество итераций, $N$")
+        if show_ylabel:
+            plt.ylabel(r"$f(x_N)-f^*$")
+        plt.title(estimate.__doc__, pad=20)
+        plt.suptitle(rf"$\Delta={data.delta}$")
+
+        do_show_plot(
+            filename=f"convergence_iterations.pgf",
+            show_plot=count == len(estimates),
+            interactive=interactive,
         )
 
-        # Plot
-        count = 1
-
-        plt.figure(plt.figure(figsize=(12, 6), dpi=100))
-
-        for estimate in estimates:
-            show_ylabel = count == 1
-
-            xvals = range(1, data.N + 1)
-            yvals = [estimate.run(x) for x in xvals]
-            plt.subplot(1, len(estimates), count)
-            # Theoretical
-            plt.plot(xvals, yvals, color="r", linestyle="--")
-
-            plt.xlabel(r"Количество итераций, $N$")
-            if show_ylabel:
-                plt.ylabel(r"$f(x_N)-f^*$")
-
-            plt.title(rf"{estimate.__doc__} $\Delta={data.delta}$", pad=20)
-            plt.legend(deltas)
-
-            do_show_plot(
-                filename="convergence_iterations.pgf",
-                show_plot=count == len(estimates) * len(deltas),
-                interactive=interactive,
-            )
-
-            count += 1
+        count += 1
 
 
 def _run_experiment__convergence_based_on_delta(
@@ -156,82 +173,171 @@ def _run_experiment__convergence_based_on_delta(
 ):
     log(title("Convergence based on delta"), verbose=verbose)
 
-    data = experiments[-1]
+    deltas = _create_deltas(num=12, start=0.1, end=0.45)
+    graph_deltas = _create_deltas(num=3, start=0.1, end=1.0)
 
-    deltas = [
-        0,
-        0.00001,
-        0.00005,
-        0.0001,
-        0.0005,
-        0.001,
-        0.002,
-        0.005,
-        0.01,
-        0.02,
-        0.05,
-        0.1,
-        0.5,
-        0.6,
-        0.7,
-        0.8,
-        0.9,
-        1.0,
-    ]
-    deltas = [significant_figures(delta, 3) for delta in deltas]
+    for data in experiments:
+        log(data.obj.__doc__, verbose=verbose)
 
-    count = 1
+        # Table
+        table_values = []
+        for delta in deltas:
+            alg = AbsoluteInexactFW(
+                obj=data.obj,
+                inexact_grad=AbsoluteInexactGradient(data.obj, rng, delta),
+                lmo=SimplexLMO(),
+                L=data.L,
+                N=data.N,
+                delta=delta,
+            )
+            alg.run(data.x0)
 
-    values = []
+            N = len(alg.history) - 1
+            log(f"{delta=}, {N=}", verbose=verbose)
 
-    for delta in deltas:
-        clear_figure = count == 1
-        show_ylabel = count == 1
+            table_values.append((delta, N))
 
-        if clear_figure:
-            plt.figure(plt.figure(figsize=(12, 6), dpi=100))
+        # Graph
+        count = 1
+        for delta, marker in zip(graph_deltas, itertools.cycle("^s*o")):
+            clear_figure = count == 1
+            show_ylabel = count == 1
 
-        data.gradient._delta = delta
-        alg = AbsoluteInexactFW(
-            obj=data.obj,
-            inexact_grad=data.gradient,
-            lmo=SimplexLMO(),
-            L=data.L,
-            N=data.N,
-            delta=delta,
+            if clear_figure:
+                plt.figure(figsize=(12, 6), dpi=100)
+
+            alg = AbsoluteInexactFW(
+                obj=data.obj,
+                inexact_grad=AbsoluteInexactGradient(data.obj, rng, delta),
+                lmo=SimplexLMO(),
+                L=data.L,
+                N=data.N,
+                delta=delta,
+            )
+            alg.run(data.x0)
+
+            xvals = range(len(alg.history))
+            yvals = [data.obj(x) for x in alg.history]
+
+            plt.xlabel(r"Количество итераций, $k$")
+            if show_ylabel:
+                plt.ylabel(r"$f(x^k)$")
+
+            plt.plot(xvals, yvals, marker=marker, markevery=10)
+
+            plt.legend(graph_deltas)
+            plt.suptitle(data.obj.__doc__)
+
+            do_show_plot(
+                filename=f"iterations_based_on_delta_{data.obj.__class__.__name__.lower()}.pgf",
+                show_plot=count == len(graph_deltas),
+                interactive=interactive,
+            )
+
+            count += 1
+
+        table_values.sort(key=lambda x: x[1])
+
+        # Print table of obtained values.
+        print(
+            latex_table(
+                caption=r"Полученное количество итераций в зависимости от значений $\Delta$",
+                values=table_values,
+                headers=[r"$\Delta$", "$N$"],
+            )
         )
-        alg.run(data.x0)
 
-        xvals = range(len(alg.history))
-        yvals = [data.obj(x) for x in alg.history]
 
-        plt.xlabel(r"Количество итераций, $k$")
-        if show_ylabel:
-            plt.ylabel(r"$f(x^k)$")
+def _run_experiments__different_lmo(
+    experiments: list[ExperimentData], verbose: bool, interactive: bool
+) -> None:
+    for data in experiments:
+        log(data.obj.__doc__, verbose=verbose)
 
-        plt.plot(xvals, yvals)
+        # Graph
+        count = 1
+        for lmo, marker in zip(_LMOS, itertools.cycle("^s*o")):
+            clear_figure = count == 1
+            show_ylabel = count == 1
 
-        plt.legend(deltas)
+            if clear_figure:
+                plt.figure(figsize=(12, 6), dpi=100)
 
-        do_show_plot(
-            filename="iterations_based_on_delta.pgf",
-            show_plot=count == len(deltas),
-            interactive=interactive,
-        )
+            alg = AbsoluteInexactFW(
+                obj=data.obj,
+                inexact_grad=AbsoluteInexactGradient(data.obj, rng, data.delta),
+                lmo=lmo,
+                L=data.L,
+                N=data.N,
+                delta=data.delta,
+            )
+            alg.run(data.x0)
 
-        log(f"{delta=}, N={len(alg.history)}", verbose=verbose)
-        values.append((delta, len(alg.history) - 1))
+            xvals = range(len(alg.history))
+            yvals = [data.obj(x) for x in alg.history]
 
-        count += 1
+            plt.xlabel(r"Количество итераций, $k$")
+            if show_ylabel:
+                plt.ylabel(r"$f(x^k)$")
 
-    # Print table
-    print(
-        latex_table(
-            caption=r"Полученное количество итераций в зависимости от значений $\Delta$",
-            values=values,
-            headers=[r"$\Delta$", "$N$"],
-        )
-    )
+            plt.plot(xvals, yvals, marker=marker, markevery=10)
+
+            plt.legend([str(lmo) for lmo in _LMOS])
+            plt.suptitle(data.obj.__doc__)
+
+            do_show_plot(
+                filename=f"lmos_iterations_{data.obj.__class__.__name__.lower()}.pgf",
+                show_plot=count == len(_LMOS),
+                interactive=interactive,
+            )
+
+            count += 1
+
+
+def _run_experiments__norm_gradient(
+    experiments: list[ExperimentData], verbose: bool, interactive: bool
+) -> None:
+    for data in experiments:
+        log(data.obj.__doc__, verbose=verbose)
+
+        # Graph
+        count = 1
+        for lmo, marker in zip(_LMOS, itertools.cycle("^s*o")):
+            clear_figure = count == 1
+            show_ylabel = count == 1
+
+            if clear_figure:
+                plt.figure(figsize=(12, 6), dpi=100)
+
+            alg = AbsoluteInexactFW(
+                obj=data.obj,
+                inexact_grad=AbsoluteInexactGradient(data.obj, rng, data.delta),
+                lmo=lmo,
+                L=data.L,
+                N=data.N,
+                delta=data.delta,
+            )
+            alg.run(data.x0)
+
+            xvals = range(len(alg.history))
+            yvals = [np.linalg.norm(data.obj.grad(x)) for x in alg.history]
+
+            plt.xlabel(r"Количество итераций, $k$")
+            if show_ylabel:
+                plt.ylabel(r"$\left\Vert f(x^k) \right\Vert$")
+
+            plt.plot(xvals, yvals, marker=marker, markevery=10)
+
+            plt.legend([str(lmo) for lmo in _LMOS])
+            plt.suptitle(data.obj.__doc__)
+
+            do_show_plot(
+                filename=f"norm_gradient_{data.obj.__class__.__name__.lower()}.pgf",
+                show_plot=count == len(_LMOS),
+                interactive=interactive,
+            )
+
+            count += 1
 
 
 def run_experiments(verbose: bool, interactive: bool):
@@ -241,4 +347,6 @@ def run_experiments(verbose: bool, interactive: bool):
         experiments, verbose, interactive
     )
     _run_experiment__convergence_based_on_delta(experiments, verbose, interactive)
+    _run_experiments__different_lmo(experiments, verbose, interactive)
+    _run_experiments__norm_gradient(experiments, verbose, interactive)
     print("Done.")

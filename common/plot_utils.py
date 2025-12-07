@@ -26,5 +26,6 @@ def do_show_plot(filename: str, show_plot: bool, interactive: bool) -> None:
         return
 
     plt.show()
+    print(f"Dumping to {filename}: {not interactive}...")
     if not interactive:
         plt.savefig("images/" + filename)

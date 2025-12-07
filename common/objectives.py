@@ -23,11 +23,7 @@ class Objective(ABC):
 
 
 class MSE(Objective):
-    """
-    Mean squared error loss error as functor.
-
-    f(x) = 1/2 ||Ax - b||^2
-    """
+    r"$f(x) = \frac{1}{2}\left\Vert Ax-b \right\Vert^2$"
 
     def __init__(self, A: np.ndarray, b: np.ndarray) -> None:
         self._A = A.copy()
@@ -42,11 +38,7 @@ class MSE(Objective):
 
 
 class LogisticRegression(Objective):
-    """
-    Logistic regression loss error as functor.
-
-    f(x) = mean(log(1 + exp(-y_i * <a_i, x>)))
-    """
+    r"$f(x) = \frac{1}{n}\sum_{i=1}^n(\log(1 + \exp(-y_i \cdot \left\langle a_i, x \right\rangle)))$"
 
     def __init__(self, A: np.ndarray, y: np.ndarray) -> None:
         self._A = A.copy()

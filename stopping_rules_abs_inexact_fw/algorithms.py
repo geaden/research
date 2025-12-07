@@ -6,6 +6,7 @@ import numpy as np
 from typing import Any
 from common.objectives import Objective
 from common.lmo import LMO
+from common.math_utils import ensure_non_zero
 
 
 @dataclass
@@ -20,7 +21,10 @@ class AbsoluteInexactGradient:
     """
 
     def __init__(
-        self, obj: Objective, rng: np.random.Generator, delta: float = 1e-4
+        self,
+        obj: Objective,
+        rng: np.random.Generator,
+        delta: float = 1e-4,
     ) -> None:
         """
         Args:
@@ -43,10 +47,7 @@ class AbsoluteInexactGradient:
         grad = self._obj.grad(x)
         noise = self._rng.normal(size=grad.shape)
         norm = np.linalg.norm(noise)
-        if norm > 1e-12:
-            noise = noise / norm * self._delta
-        else:
-            noise = np.zeros_like(grad)
+        noise = noise / ensure_non_zero(norm) * self._delta
         return grad + noise
 
 
@@ -67,7 +68,7 @@ class BaseFW(ABC):
         self._L = L
         self._N = N
         self._delta = delta
-        self._history = []
+        self._history: list[np.ndarray] = []
 
     @abstractmethod
     def run(self, x0: np.ndarray) -> Result:
@@ -113,7 +114,7 @@ class AbsoluteInexactFW(BaseFW):
 
         for _ in range(self._N):
             g = self._inexact_grad(x)
-            v = self._lmo(x)
+            v = self._lmo(g)
             d = v - x
 
             dual_gap = -np.dot(g, d)
