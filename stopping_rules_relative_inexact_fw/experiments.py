@@ -21,6 +21,9 @@ from algorithms import BaseInexactFW, InexactFW, AdaptiveInexactFW
 _SOLID_LINE: tuple[str, str] = ("solid", "b")
 
 
+_FILENAME_PREFIX = "denisov"
+
+
 @dataclass
 class ExperimentData:
     """Representation of an experiment."""
@@ -54,8 +57,8 @@ def setup_experiments(verbose: Optional[bool] = False) -> list[ExperimentData]:
     # 1. MSE
     experiments.append(
         ExperimentData(
-            title=r"MSE (на шаре)",
-            filename_prefix="mse_on_ball",
+            title="",
+            filename_prefix=_FILENAME_PREFIX,
             radius_grid=np.linspace(0.2, 1.2, num=N),
             obj=MSE(A, b),
             alpha=0.02,
@@ -70,8 +73,8 @@ def setup_experiments(verbose: Optional[bool] = False) -> list[ExperimentData]:
     y = np.random.choice([-1, 1], size=(R,))
     experiments.append(
         ExperimentData(
-            title="Функция ошибки\nлогистической регрессии (на шаре)",
-            filename_prefix="logreg_on_ball",
+            title="",
+            filename_prefix=_FILENAME_PREFIX,
             radius_grid=np.linspace(1.0, 5.0, num=N),
             obj=LogisticRegression(A, y),
             alpha=0.03,
@@ -87,7 +90,7 @@ def setup_experiments(verbose: Optional[bool] = False) -> list[ExperimentData]:
     lam = 0.1
     experiments.append(
         ExperimentData(
-            title="LASSO (на шаре)",
+            title=_FILENAME_PREFIX,
             filename_prefix="lasso_on_ball",
             radius_grid=np.linspace(1.0, 5.0, num=N),
             obj=Lasso(A, b_star, lam),
@@ -103,7 +106,7 @@ def setup_experiments(verbose: Optional[bool] = False) -> list[ExperimentData]:
     Q = np.diag([R] + [1] * (R - 1))
     experiments.append(
         ExperimentData(
-            title=r"$\frac{1}{2} ||x||^2$ (на шаре)",
+            title=_FILENAME_PREFIX,
             filename_prefix="quad_norm_on_ball",
             radius_grid=np.linspace(0.2, 0.7, num=N),
             obj=AnisoQuadObjective(Q=Q),
@@ -121,18 +124,26 @@ def setup_experiments(verbose: Optional[bool] = False) -> list[ExperimentData]:
 def run_experiments(verbose: bool, interactive: bool):
     experiments_data = setup_experiments(verbose=verbose)
 
+    no = 1
     for fw in [InexactFW, AdaptiveInexactFW]:
         _run_experiment_iterations_per_ball_size(
-            fw, experiments_data[:-2], interactive, verbose
+            fw, experiments_data[:2], interactive, verbose, no=no
         )
+        no += 1
 
     _run_adaptive_convergence_based_on_alpha(
-        experiments_data[:-2],
+        experiments_data[:2],
         interactive,
         verbose,
+        no,
     )
+
+    no += 1
     _run_comparison_convergence_non_adaptive_and_adaptive(
-        experiments_data, interactive, verbose
+        experiments_data,
+        interactive,
+        verbose,
+        no,
     )
 
 
@@ -141,6 +152,7 @@ def _run_experiment_iterations_per_ball_size(
     experiments_data: list[ExperimentData],
     interactive: Optional[bool] = False,
     verbose: Optional[bool] = False,
+    no: Optional[int] = 1,
 ) -> None:
     """
     Comparison of non-adaptive relative inexact FW practical and theoretical
@@ -175,7 +187,7 @@ def _run_experiment_iterations_per_ball_size(
 
         _do_plot_iterations_per_ball_size(
             data.title,
-            data.filename_prefix + f"_iterations_{algorithm_cls.__name__.lower()}.pgf",
+            f"{data.filename_prefix}{no}.pgf",
             ball_size=X,
             iterations=Y,
             theoretical=theory_Y,
@@ -190,6 +202,7 @@ def _run_adaptive_convergence_based_on_alpha(
     experiments_data: list[ExperimentData],
     interactive: Optional[bool] = False,
     verbose: Optional[bool] = False,
+    no: Optional[int] = 1,
 ):
     """
     Convergence based on alpha.
@@ -240,8 +253,8 @@ def _run_adaptive_convergence_based_on_alpha(
             hist.append([data.obj(x) for x in algorithm.history])
 
         _do_plot_convergence(
-            data.title.replace("на шаре", r"на шаре $r = {}$".format(radius)),
-            data.filename_prefix + "_convergence.pgf",
+            data.title,
+            f"{data.filename_prefix}{no}.pgf",
             hist,
             alpha=alphas,
             interactive=interactive,
@@ -257,6 +270,7 @@ def _run_comparison_convergence_non_adaptive_and_adaptive(
     experiments_data: list[ExperimentData],
     interactive: Optional[bool] = False,
     verbose: Optional[bool] = False,
+    no: Optional[int] = 1,
 ) -> None:
     """
     Comparison of non-adaptive and adaptive convergence.
@@ -264,14 +278,14 @@ def _run_comparison_convergence_non_adaptive_and_adaptive(
     log(_title("Comparison of non-adaptive and adaptive convergence"), verbose=verbose)
     expected_iterations_stack = [12, 6]
     data = dataclasses.replace(experiments_data[-1])
-    data.filename_prefix = "nonadaptive_adaptive_comparison_convergence.pgf"
+    data.filename_prefix = _FILENAME_PREFIX
     radius = 2.0
     x0 = np.ones(data.R) * 0.5 * radius
     lmo = MinLinearDirectionL2Ball(radius=radius)
 
     algorithms = [
         (
-            r"Неадаптивный вариант с шагом $\frac{2}{k+2}$ на шаре",
+            r"",
             InexactFW(
                 data.obj,
                 lmo=lmo,
@@ -283,7 +297,7 @@ def _run_comparison_convergence_non_adaptive_and_adaptive(
             ),
         ),
         (
-            r"Адаптивный вариант на шаре",
+            r"",
             AdaptiveInexactFW(
                 data.obj,
                 lmo=lmo,
@@ -301,8 +315,8 @@ def _run_comparison_convergence_non_adaptive_and_adaptive(
         algorithm.run(x0)
 
         _do_plot_convergence(
-            title.replace("на шаре", r"на шаре $r = {}$".format(radius)),
-            data.filename_prefix,
+            title,
+            f"{data.filename_prefix}{no}.pgf",
             [[data.obj(x) for x in algorithm.history]],
             alpha=[],
             interactive=interactive,
@@ -317,9 +331,10 @@ def _preamble():
     matplotlib.use("pgf")
     params = {
         "text.latex.preamble": (
-            r"\usepackage[T1, T2A]{fontenc}"
-            r"\usepackage[utf8]{inputenc}"
-            r"\usepackage[main=russian,english]{babel}"
+            r"\usepackage{lmodern}"
+            r"\usepackage[T2A]{fontenc}"
+            r"\usepackage[cp1251]{inputenc}"
+            r"\usepackage[english,main=russian]{babel}"
         ),
         "text.usetex": True,
         "font.size": 11,
@@ -357,11 +372,11 @@ def _do_plot_iterations_per_ball_size(
     plt.title(label)
     plt.yscale("log")
 
-    plt.xlabel(r"Радиус шара, $r$")
+    plt.xlabel(r"$r$")
     if show_ylabel:
-        plt.ylabel(r"$\log$ числа итераций")
+        plt.ylabel(r"$\log k$")
 
-    plt.legend(["Фактическое число итераций", "Теоретическая оценка"])
+    plt.legend().set_visible(False)
 
     _show_plot(filename, show_plot, interactive)
 
@@ -398,7 +413,7 @@ def _do_plot_convergence(
             marker=marker,
         )
         plt.title(label)
-        plt.xlabel(r"Номер итерации, $k$")
+        plt.xlabel(r"$k$")
         if show_ylabel:
             plt.ylabel(r"$f(x^k)$")
         plt.xticks(range(0, limit, 5 if limit < 50 else 10))
