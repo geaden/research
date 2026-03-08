@@ -6,8 +6,11 @@ from lmo import MinLinearDirectionL2Ball
 import numpy as np
 
 
+np.random.seed(2025)
+
+
 def test_non_adaptive():
-    np.random.seed(2025)
+    """It should return results for non-adaptive variant of the algorithm."""
     A = np.array([[1, 2], [4, 5]])
     b = np.array([1, 2])
     alpha = 0.5
@@ -31,7 +34,7 @@ def test_non_adaptive():
 
 
 def test_adaptive():
-    np.random.seed(2025)
+    """It should return results for adaptive variant of the algorithm."""
     alpha = 0.5
     A = np.array([[1, 2], [4, 5]])
     b = np.array([1, 2])

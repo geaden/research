@@ -1,2 +1,4 @@
+-r base.txt
+
 pytest==8.4.1
 pytest-flake8

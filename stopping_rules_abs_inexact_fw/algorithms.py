@@ -3,16 +3,10 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 import numpy as np
-from typing import Any
+from common.algorithms import BaseAlgorithm, Result
 from common.objectives import Objective
 from common.lmo import LMO
 from common.math_utils import ensure_non_zero
-
-
-@dataclass
-class Result:
-    x0: np.ndarray
-    x_opt: np.ndarray
 
 
 class AbsoluteInexactGradient:
@@ -51,7 +45,7 @@ class AbsoluteInexactGradient:
         return grad + noise
 
 
-class BaseFW(ABC):
+class BaseFW(BaseAlgorithm):
 
     def __init__(
         self,
@@ -62,45 +56,13 @@ class BaseFW(ABC):
         N: int = 1000,
         delta: float = 1e-4,
     ):
+        super().__init__()
         self._obj = obj
         self._inexact_grad = inexact_grad
         self._lmo = lmo
         self._L = L
         self._N = N
         self._delta = delta
-        self._history: list[np.ndarray] = []
-
-    @abstractmethod
-    def run(self, x0: np.ndarray) -> Result:
-        """
-        Run algorithm and return solution.
-
-        Args:
-            x0 (np.ndarray): initial vector
-
-        Returns:
-            result (Result): solution
-        """
-        raise NotImplementedError()
-
-    def track(self, x: np.ndarray) -> None:
-        """
-        Add x to history.
-
-        Args:
-            x (np.ndarray): vector to add
-        """
-        self._history.append(x.copy())
-
-    @property
-    def history(self) -> list[np.ndarray]:
-        """
-        Return history.
-
-        Returns:
-            list[np.ndarray]: history
-        """
-        return self._history
 
 
 class AbsoluteInexactFW(BaseFW):
