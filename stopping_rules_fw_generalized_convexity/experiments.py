@@ -4,6 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from common.algorithms import BaseAlgorithm
+from common.experiment_utils import title
 from common.latex_utils import latex_table
 from common.lmo import LMO, SimplexLMO
 from common.math_utils import non_singular_matrix, significant_figures
@@ -77,13 +78,12 @@ def setup_experiments(verbose: bool, _: bool) -> list[ExperimentData]:
     return experiments
 
 
-def run_experiments(verbose: bool, interactive: bool):
-    log("Running experiments...", verbose=verbose)
-    experiments = setup_experiments(verbose, interactive)
-
-    if not interactive:
-        preamble()
-
+def _run_convegence_rate_stopping_rule(
+    experiments: list[ExperimentData],
+    verbose: bool,
+    interactive: bool,
+) -> None:
+    log(title("Convergence rate stopping rule"), verbose=verbose)
     plt.figure(figsize=(12, 6), dpi=100)
     for data in experiments:
         algorithm = data.algorithm
@@ -99,4 +99,45 @@ def run_experiments(verbose: bool, interactive: bool):
     plt.ylabel(r"$f(x)$")
     plt.legend()
     plt.grid()
-    do_show_plot(filename="denisov.pgf", show_plot=True, interactive=interactive)
+    do_show_plot(filename="denisov1.pgf", show_plot=True, interactive=interactive)
+
+
+def _run_delta_iterations(
+    experiments: list[ExperimentData],
+    verbose: bool,
+    interactive: bool,
+) -> None:
+    log(title("Delta iterations"), verbose=verbose)
+
+    deltas = np.linspace(1e-12, 0.0005, 100)
+    iterations = []
+
+    for data in [experiments[1]]:
+        plt.figure(figsize=(12, 6), dpi=100)
+        for delta in deltas:
+            algorithm = FrankWolfeL0L1(
+                obj=data.obj,
+                lmo=data.algorithm._lmo,
+                L0=data.algorithm._L0,
+                L1=data.algorithm._L1,
+                iterations_count=_ITERATIONS_COUNT,
+                tol=delta,
+            )
+            algorithm.run(data.x0)
+            iterations.append(len(algorithm.history))
+        plt.plot(deltas, iterations)
+
+    plt.xlabel(r"$\Delta$")
+    plt.ylabel(r"$k$")
+    plt.grid()
+    do_show_plot(filename="denisov2.pgf", show_plot=True, interactive=interactive)
+
+
+def run_experiments(verbose: bool, interactive: bool):
+    log("Running experiments...", verbose=verbose)
+    experiments = setup_experiments(verbose, interactive)
+    _run_convegence_rate_stopping_rule(experiments, verbose, interactive)
+    _run_delta_iterations(experiments, verbose, interactive)
+
+    if not interactive:
+        preamble()
