@@ -30,6 +30,10 @@ class FrankWolfe(BaseAlgorithm):
             d_k = s_k - x
 
             numerator = -np.dot(grad, d_k)
+
+            if numerator**2 <= self._tol:
+                break
+
             denominator = self._L * np.linalg.norm(d_k) ** 2
 
             alpha_k = min(1, numerator / denominator)

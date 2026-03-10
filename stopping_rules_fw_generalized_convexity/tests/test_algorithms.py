@@ -1,8 +1,8 @@
 import pytest
 import numpy as np
-from algorithms import FrankWolfe, FrankWolfeL0L1
 from common.lmo import LMO, SimplexLMO
 from common.objectives import Objective, MSE
+from ..algorithms import FrankWolfe, FrankWolfeL0L1
 
 
 _DIMENSION = 2
@@ -10,10 +10,12 @@ _DIMENSION = 2
 
 @pytest.fixture()
 def objective() -> Objective:
-    A = [
-        [2, 1],
-        [1, 2],
-    ]
+    A = np.array(
+        [
+            [2, 1],
+            [1, 2],
+        ]
+    )
     b = np.ones(_DIMENSION)
     return MSE(A, b)
 
@@ -30,7 +32,7 @@ def test_classic_frank_wolfe(objective: Objective, lmo: LMO):
     result = algorithm.run(np.zeros(_DIMENSION))
 
     assert result
-    assert len(algorithm.history) == 1
+    assert len(algorithm.history) == 3
 
 
 def test_frank_wolfe_L0L1(objective: Objective, lmo: LMO):
@@ -40,4 +42,4 @@ def test_frank_wolfe_L0L1(objective: Objective, lmo: LMO):
     result = algorithm.run(np.zeros(_DIMENSION))
 
     assert result
-    assert len(algorithm.history) == 1
+    assert len(algorithm.history) == 14

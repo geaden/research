@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Callable
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -25,7 +26,7 @@ _ITERATIONS_COUNT = 5_000
 class ExperimentData:
     label: str
     obj: Objective
-    algorithm: BaseAlgorithm
+    algorithm: Callable[[np.float64], BaseAlgorithm]
     x0: np.float64
 
 
@@ -47,11 +48,12 @@ def setup_experiments(verbose: bool, _: bool) -> list[ExperimentData]:
         ExperimentData(
             label="Classic FW",
             obj=obj,
-            algorithm=FrankWolfe(
+            algorithm=lambda delta: FrankWolfe(
                 obj=obj,
                 lmo=lmo,
                 L=L,
                 iterations_count=_ITERATIONS_COUNT,
+                tol=delta,
             ),
             x0=x0,
         ),
@@ -63,13 +65,13 @@ def setup_experiments(verbose: bool, _: bool) -> list[ExperimentData]:
         ExperimentData(
             label=r"$(L_0, L_1)$-FW",
             obj=obj,
-            algorithm=FrankWolfeL0L1(
+            algorithm=lambda delta: FrankWolfeL0L1(
                 obj=obj,
                 lmo=lmo,
                 L0=L0,
                 L1=L1,
                 iterations_count=_ITERATIONS_COUNT,
-                tol=_TOLERANCE,
+                tol=delta,
             ),
             x0=x0,
         )
@@ -86,7 +88,7 @@ def _run_convegence_rate_stopping_rule(
     log(title("Convergence rate stopping rule"), verbose=verbose)
     plt.figure(figsize=(12, 6), dpi=100)
     for data in experiments:
-        algorithm = data.algorithm
+        algorithm = data.algorithm(_TOLERANCE)
         algorithm.run(data.x0)
         plt.plot(
             np.arange(len(algorithm.history)),
@@ -99,6 +101,7 @@ def _run_convegence_rate_stopping_rule(
     plt.ylabel(r"$f(x)$")
     plt.legend()
     plt.grid()
+
     do_show_plot(filename="denisov1.pgf", show_plot=True, interactive=interactive)
 
 
@@ -110,34 +113,36 @@ def _run_delta_iterations(
     log(title("Delta iterations"), verbose=verbose)
 
     deltas = np.linspace(1e-12, 0.0005, 100)
-    iterations = []
 
-    for data in [experiments[1]]:
-        plt.figure(figsize=(12, 6), dpi=100)
-        for delta in deltas:
-            algorithm = FrankWolfeL0L1(
-                obj=data.obj,
-                lmo=data.algorithm._lmo,
-                L0=data.algorithm._L0,
-                L1=data.algorithm._L1,
-                iterations_count=_ITERATIONS_COUNT,
-                tol=delta,
-            )
+    plt.figure(figsize=(12, 6), dpi=100)
+
+    for data in experiments:
+
+        def iterations_count(delta: float) -> int:
+            algorithm = data.algorithm(delta)
             algorithm.run(data.x0)
-            iterations.append(len(algorithm.history))
-        plt.plot(deltas, iterations)
+            return len(algorithm.history) - 1
+
+        iterations: list[int] = list(map(iterations_count, deltas))
+        plt.plot(deltas, iterations, label=data.label)
 
     plt.xlabel(r"$\Delta$")
     plt.ylabel(r"$k$")
+    plt.legend()
     plt.grid()
+
     do_show_plot(filename="denisov2.pgf", show_plot=True, interactive=interactive)
 
 
 def run_experiments(verbose: bool, interactive: bool):
     log("Running experiments...", verbose=verbose)
+
     experiments = setup_experiments(verbose, interactive)
-    _run_convegence_rate_stopping_rule(experiments, verbose, interactive)
-    _run_delta_iterations(experiments, verbose, interactive)
 
     if not interactive:
         preamble()
+
+    _run_convegence_rate_stopping_rule(experiments, verbose, interactive)
+    _run_delta_iterations(experiments, verbose, interactive)
+
+    log("Done.", verbose=verbose)
