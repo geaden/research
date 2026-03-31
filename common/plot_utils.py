@@ -21,11 +21,16 @@ def preamble():
     plt.rcParams.update(params)
 
 
-def do_show_plot(filename: str, show_plot: bool, interactive: bool) -> None:
+def do_show_plot(filename: str, show_plot: bool, interactive: bool, should_draw: bool = False) -> None:
     if not show_plot:
         return
 
-    plt.show()
-    print(f"Dumping to {filename}: {not interactive}...")
+    if should_draw:
+        plt.draw()
+    else:
+        plt.show()
+
+    print(f"Check if dump to {filename} is needed: {not interactive}")
     if not interactive:
+        print(f"Dumping to {filename}: {not interactive}...")
         plt.savefig("images/" + filename)

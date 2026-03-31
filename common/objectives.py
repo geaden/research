@@ -23,7 +23,7 @@ class Objective(ABC):
 
 
 class MSE(Objective):
-    r"$f(x) = \frac{1}{2}\left\Vert Ax-b \right\Vert^2$"
+    r"$f(x) = \frac{1}{2}\left\Vert Ax-b \right\Vert^2_2$"
 
     def __init__(self, A: np.ndarray, b: np.ndarray) -> None:
         self._A = A.copy()

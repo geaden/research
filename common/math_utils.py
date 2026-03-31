@@ -2,6 +2,8 @@
 
 import numpy as np
 
+_NON_ZERO_FACTOR = 1e-20
+
 
 def non_singular_matrix(
     N: int,
@@ -28,7 +30,9 @@ def significant_figures(x: float, n: int = 1) -> float:
 
 def ensure_non_zero(x: np.float64) -> np.float64:
     """
-    Ensure that |x| is non-zero.
+    Ensure that |x| is non-zero by setting it to _NON_ZERO_FACTOR.
     Close to zero, but not zero to ensure non division by zero occurrence.
+
+    TODO(geaden): handle negative values.
     """
-    return max(x, 1e-20)
+    return max(x, _NON_ZERO_FACTOR)

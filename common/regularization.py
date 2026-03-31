@@ -3,6 +3,7 @@
 import numpy as np
 
 from common.objectives import Objective
+from common.math_utils import significant_figures
 
 
 class L1Regular(Objective):
@@ -12,7 +13,7 @@ class L1Regular(Objective):
         super().__init__()
         self._obj = obj
         self._lam = lam
-        self.__doc__ = rf"{self._obj.__doc__}$ + \lambda * \|x\|_1$"
+        self.__doc__ = rf"{self._obj.__doc__}$ + \lambda \cdot \|x\|_1, \lambda={significant_figures(lam, n=4)}$"
 
     def __call__(self, x: np.ndarray) -> np.ndarray:
         return self._obj(x) + self._lam * np.linalg.norm(x, 1)

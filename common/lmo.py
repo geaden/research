@@ -57,8 +57,29 @@ class MinLinearDirectionL2BallLMO(LMO):
             return np.zeros_like(g)
         return -self._r * g / norm_g
 
-    def __str__(self):
+    def __str__(self) -> str:
         return rf"$\ell_2$-ball(r={self._r})"
+
+
+class LinfBallLMO(LMO):
+    r"""
+    Linear Minimization Oracle for the $\ell_\infty$-ball.
+    """
+
+    def __init__(self, radius: float, center: float | None = None) -> None:
+        self._radius = radius
+        self._center = center
+
+    def __call__(self, g: np.ndarray) -> np.float64:
+        if self._center is None:
+            center = np.zeros_like(g)
+        else:
+            center = np.array(self._center)
+
+        return center - self._radius * np.sign(g)
+
+    def __str__(self) -> str:
+        return rf"$\ell_\infty$-ball(r={self._radius},c={self._center or 0.0})"
 
 
 class ShiftedBallLMO(LMO):
