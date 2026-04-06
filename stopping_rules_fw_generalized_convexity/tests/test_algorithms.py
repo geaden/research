@@ -2,7 +2,7 @@ import pytest
 import numpy as np
 from common.lmo import LMO, SimplexLMO
 from common.objectives import Objective, MSE
-from ..algorithms import FrankWolfe, FrankWolfeL0L1
+from ..algorithms import FrankWolfe, FrankWolfeL0L1, AdaptiveFrankWolfeL0L1
 
 
 _DIMENSION = 2
@@ -43,3 +43,13 @@ def test_frank_wolfe_L0L1(objective: Objective, lmo: LMO):
 
     assert result
     assert len(algorithm.history) == 14
+
+
+def test_adaptive_frank_wolfe(objective: Objective, lmo: LMO):
+    """It should run Adaptive Frank-Wolfe implementation."""
+    algorithm = AdaptiveFrankWolfeL0L1(obj=objective, lmo=lmo, L0=1e-12, L1=2)
+
+    result = algorithm.run(np.zeros(_DIMENSION))
+
+    assert result
+    assert len(algorithm.history) == 17

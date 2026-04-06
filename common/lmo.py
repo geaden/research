@@ -99,4 +99,4 @@ class ShiftedBallLMO(LMO):
         return self._c - self._r * g / ensure_non_zero(norm_g)
 
     def __str__(self):
-        return f"Ball(center={self._c}, r={self._r})"
+        return f"$\ell_2$-ball(r={self._r},c={self._c})"

@@ -12,6 +12,7 @@ def preamble():
             r"\usepackage[T1, T2A]{fontenc}"
             r"\usepackage[utf8]{inputenc}"
             r"\usepackage[main=russian,english]{babel}"
+            r"\userpackage{lmodern}"
             r"\usepackage{tikz}"
         ),
         "text.usetex": True,
