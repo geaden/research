@@ -5,7 +5,7 @@ from typing import Any, Tuple
 
 import numpy as np
 
-from utils import dual_gap, check_alpha
+from .utils import dual_gap, check_alpha
 
 
 class StepSize(ABC):

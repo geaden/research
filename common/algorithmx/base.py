@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from abc import ABC, abstractmethod
+from common.objectives import Objective
 
 import numpy as np
 
@@ -12,7 +13,8 @@ class Result:
 
 class BaseAlgorithm(ABC):
 
-    def __init__(self):
+    def __init__(self, **kwargs: dict[object, object]) -> None:
+        super().__init__(**kwargs)
         self._history: list[np.ndarray] = []
 
     @abstractmethod

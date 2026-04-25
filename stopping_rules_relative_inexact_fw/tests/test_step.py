@@ -1,7 +1,7 @@
 """Tests for step size strategies."""
 
 import pytest
-from step import DecayingStepSize, ShortStepSize
+from ..step import DecayingStepSize, ShortStepSize
 
 
 @pytest.mark.parametrize(

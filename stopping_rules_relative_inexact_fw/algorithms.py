@@ -3,10 +3,12 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 import numpy as np
-from objectives import Objective
-from step import StepSize
-from utils import check_alpha, dual_gap, log, ensure_non_zero
-from lmo import LinearMinimizationOracle
+from common.gradient import relative_inexact_gradient
+from common.objectives import Objective
+from .step import StepSize
+from .utils import check_alpha, dual_gap
+from common.math_utils import ensure_non_zero
+from common.lmo import LMO
 
 
 @dataclass
@@ -29,7 +31,7 @@ class BaseInexactFW(ABC):
         self,
         obj: Objective,
         step_size: StepSize,
-        lmo: LinearMinimizationOracle,
+        lmo: LMO,
         L: np.float64,
         alpha: float = 0.0,
         delta: float = 1e-4,
@@ -140,10 +142,7 @@ class BaseInexactFW(ABC):
         self,
         x: np.ndarray,
     ) -> np.ndarray:
-        """Return (1+u)*g, where u is uniform in [-alpha, alpha]."""
-        grad = self._obj.grad(x)
-        u = np.random.uniform(-self._alpha, self._alpha, size=grad.shape)
-        return grad * (1 + u)
+        return relative_inexact_gradient(self._obj, x, self._alpha)
 
 
 class InexactFW(BaseInexactFW):

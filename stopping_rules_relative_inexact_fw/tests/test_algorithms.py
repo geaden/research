@@ -1,8 +1,8 @@
-from algorithms import InexactFW
-from algorithms import AdaptiveInexactFW
-from step import DecayingStepSize, ShortStepSize
-from objectives import MSE
-from lmo import MinLinearDirectionL2Ball
+from ..algorithms import InexactFW
+from ..algorithms import AdaptiveInexactFW
+from ..step import DecayingStepSize, ShortStepSize
+from common.objectives import MSE
+from common.lmo import MinLinearDirectionL2BallLMO
 import numpy as np
 
 
@@ -20,7 +20,7 @@ def test_non_adaptive():
             b=b,
         ),
         step_size=DecayingStepSize(),
-        lmo=MinLinearDirectionL2Ball(radius=1.0),
+        lmo=MinLinearDirectionL2BallLMO(radius=1.0),
         L=np.linalg.eigvals(A).max(),
         alpha=alpha,
     )
@@ -44,7 +44,7 @@ def test_adaptive():
             b=b,
         ),
         step_size=ShortStepSize(alpha=alpha),
-        lmo=MinLinearDirectionL2Ball(radius=1.0),
+        lmo=MinLinearDirectionL2BallLMO(radius=1.0),
         L=np.linalg.eigvals(A).max(),
         alpha=alpha,
     )

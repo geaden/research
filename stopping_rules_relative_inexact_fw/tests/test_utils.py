@@ -1,4 +1,4 @@
-from utils import significant_figures
+from common.math_utils import significant_figures
 
 
 def test_significant_numbers():

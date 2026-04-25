@@ -1,5 +1,5 @@
 import numpy as np
-from common.algorithms import BaseAlgorithm, Result
+from common.algorithmx import BaseAlgorithm, Result
 from common.objectives import Objective
 from common.lmo import LMO
 

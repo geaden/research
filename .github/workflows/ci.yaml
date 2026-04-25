@@ -22,5 +22,9 @@ jobs:
           pip install -r requirements/testing.txt
       - name: Test Common
         run: pytest --pyargs common
+      - name: Test Stopping Rules Frank-Wolfe Relative Inexact
+        run: pytest --pyargs stopping_rules_relative_inexact_fw
       - name: Test Stopping Rules Frank-Wolfe Generalized Convexity
         run: pytest --pyargs stopping_rules_fw_generalized_convexity
+      - name: Test Stopping Rules Adaptive Robust Frank-Wolfe
+        run: pytest --pyargs stopping_rules_robust_fw

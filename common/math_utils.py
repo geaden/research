@@ -36,3 +36,13 @@ def ensure_non_zero(x: np.float64) -> np.float64:
     TODO(geaden): handle negative values.
     """
     return max(x, _NON_ZERO_FACTOR)
+
+
+class Interval:
+
+    def __init__(self, lower: np.float64, upper: np.float64):
+        self._lower = lower
+        self._upper = upper
+
+    def __contains__(self, item: np.float64) -> bool:
+        return self._lower <= item <= self._upper

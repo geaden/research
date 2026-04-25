@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from utils import ensure_non_zero
+from common.math_utils import ensure_non_zero
 
 
 class LinearMinimizationOracle:
