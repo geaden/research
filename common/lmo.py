@@ -42,7 +42,7 @@ class SimplexLMO(LMO):
 
 
 class MinLinearDirectionL2BallLMO(LMO):
-    """
+    r"""
     Linear Minimization Oracle that minimizes linear function in l2-ball.
     s = \arg \min_{||s||<=r} <g, s>
     solution: s = -r * g/||g||
@@ -83,7 +83,7 @@ class LinfBallLMO(LMO):
 
 
 class ShiftedBallLMO(LMO):
-    """
+    r"""
     The nuclear norm ball
 
     $x \in ||radius - center||_2 <= radius$
@@ -99,4 +99,4 @@ class ShiftedBallLMO(LMO):
         return self._c - self._r * g / ensure_non_zero(norm_g)
 
     def __str__(self):
-        return f"$\ell_2$-ball(r={self._r},c={self._c})"
+        return rf"$\ell_2$-ball(r={self._r},c={self._c})"
