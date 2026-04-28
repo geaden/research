@@ -6,6 +6,8 @@ from ..algorithms import (
 from common.objectives import MSE
 from common.lmo import MinLinearDirectionL2BallLMO
 
+np.random.seed(2026)
+
 
 def test_adaptive_fw_robust_relative_inexactness():
     algorithm = AdaptiveFrankWolfeRobustRelativeInexactness(

@@ -1,5 +1,3 @@
-
-
 name: CI
 
 on:
@@ -28,3 +26,5 @@ jobs:
         run: pytest --pyargs stopping_rules_fw_generalized_convexity
       - name: Test Stopping Rules Adaptive Robust Frank-Wolfe
         run: pytest --pyargs stopping_rules_robust_fw
+      - name: Test Stopping Rules Absolute Inexact Frank-Wolfe
+        run: pytest --pyargs stopping_rules_abs_inexact_fw

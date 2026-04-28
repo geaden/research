@@ -3,7 +3,7 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 import numpy as np
-from common.algorithms import BaseAlgorithm, Result
+from common.algorithmx import BaseAlgorithm, Result
 from common.objectives import Objective
 from common.lmo import LMO
 from common.math_utils import ensure_non_zero
@@ -65,7 +65,7 @@ class BaseFW(BaseAlgorithm):
         self._delta = delta
 
 
-class AbsoluteInexactFW(BaseFW):
+class  AbsoluteInexactFW(BaseFW):
     """
     Implementation of Frank-Wolfe method with absolute inexact gradient.
     """

@@ -2,8 +2,7 @@
 
 from typing import Optional
 import numpy as np
-from common.algorithms_mixins import MaxIterMixin, InexactMixin
-from common.algorithmx import Result
+from common.algorithmx import Result, MaxIterMixin, InexactMixin
 from common.gradient import relative_inexact_gradient
 from common.algorithmx.fw import (
     BaseFrankWolfe,
@@ -11,7 +10,7 @@ from common.algorithmx.fw import (
 )
 from common.objectives import Objective
 from common.lmo import LMO
-from common.math_utils import Interval
+from common.math_utils import Interval, ensure_non_zero
 from common.oracles import ComparisonOracle, comparison_gde
 
 
@@ -30,11 +29,13 @@ class AdaptiveFrankWolfeRobustRelativeInexactness(
         obj: Objective,
         lmo: LMO,
         L: np.float64,
-        alpha: np.float64 = 1e-4,
-        max_iter: int = 10000,
+        alpha: Optional[np.float64] = 1e-4,
+        max_iter: Optional[int] = 10000,
+        tol: Optional[float] = 1e-6,
     ):
         super().__init__(obj=obj, lmo=lmo, max_iter=max_iter, alpha=alpha)
         self._L = L
+        self._tol = tol
 
     def run(self, x0: np.ndarray) -> Result:
         x = x0.copy().astype(np.float64)
@@ -47,6 +48,10 @@ class AdaptiveFrankWolfeRobustRelativeInexactness(
             s_k = self._lmo(inexact_grad)
             d_k = s_k - x
             inexact_gap = -np.dot(inexact_grad, d_k)
+
+            if inexact_gap <= self._tol:
+                break
+
             M = max(M, np.linalg.norm(inexact_grad))
             eta = self._eta(inexact_gap, M, d_k)
             theta = self._theta(inexact_gap, M, d_k)
@@ -75,7 +80,11 @@ class AdaptiveFrankWolfeRobustRelativeInexactness(
         return min_step_size
 
 
-class AdaptiveFrankWolfeRobustComparison(BaseFrankWolfe, MaxIterMixin):
+class AdaptiveFrankWolfeRobustComparison(
+    BaseFrankWolfe,
+    MaxIterMixin,
+    InexactMixin,
+):
     """Adaptive Frank-Wolfe with Robust Comparison."""
 
     def __init__(
@@ -83,37 +92,40 @@ class AdaptiveFrankWolfeRobustComparison(BaseFrankWolfe, MaxIterMixin):
         obj: Objective,
         lmo: LMO,
         L: np.float64,
-        delta: Optional[np.float64] = 1e-4,
-        max_iter: int = 10000,
-    ):
-        super().__init__(obj=obj, lmo=lmo, max_iter=max_iter)
+        alpha: Optional[np.float64] = 1e-4,
+        delta: Optional[np.float64] = 1e-3,
+        max_iter: Optional[int] = 10000,
+        tol: Optional[float] = 1e-6,
+    ) -> None:
+        super().__init__(obj=obj, lmo=lmo, max_iter=max_iter, alpha=alpha)
         self._L = L
         self._delta = delta
+        self._oracle = ComparisonOracle(self._obj)
+        self._tol = tol
 
     def run(self, x0: np.ndarray) -> Result:
-        oracle = ComparisonOracle(self._obj)
         x = x0.copy().astype(np.float64)
         self.track(x)
 
         for k in range(self.max_iter):
             g = comparison_gde(
-                oracle=oracle,
+                oracle=self._oracle,
                 x=x,
-                gamma=0.5,  # TODO(geaden): Adjust parameter
+                gamma=self.alpha,
                 delta=self._delta,
                 L=self._L,
             )
             s = self._lmo(g)
             d = s - x
-            d_norm2 = float(np.dot(d, d))
+            gap_hat = -np.dot(g, d)
 
-            gap_hat = float(np.dot(g, x - s))
-            eta = min(gap_hat / (self._L * d_norm2), 1.0)
+            if gap_hat <= self._tol:
+                break
 
-            if eta >= 0:
-                gamma = eta
-            else:
-                gamma = _diminishing_step_size(k)
+            denominator = self._L * ensure_non_zero(np.linalg.norm(d) ** 2)
+            eta = min(gap_hat / denominator, 1.0)
+
+            gamma = eta if eta >= 0 else _diminishing_step_size(k)
 
             x += gamma * d
             self.track(x)

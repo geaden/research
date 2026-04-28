@@ -36,7 +36,7 @@ def directional_preference(
 def comparison_gde(
     oracle: ComparisonOracle,
     x: np.ndarray,
-    gamma: np.ndarray,
+    gamma: float,
     delta: np.float64,
     L: np.float64,
 ) -> np.ndarray:
@@ -46,7 +46,7 @@ def comparison_gde(
     Args:
         oracle (ComparisonOracle): comparison oracle.
         x (np.ndarray): point in R^n.
-        gamma (np.ndarray): lower bound on gradient norm.
+        gamma (float): A parameter controlling the precision/scale of the oracle's gradient estimation.
         delta (np.float64): precision
 
     Returns:
@@ -97,25 +97,25 @@ def comparison_gde(
         alpha_i = 0.5
         for _ in range(iters):
             alpha_i = 0.5 * (lo + hi)
+            v = np.zeros(n)
+            v[i_star] = alpha_i * signs[i_star]
+            v[i] = -signs[i]
+            v_unit = v / np.sqrt(1 + alpha_i**2)
             res = directional_preference(
                 oracle,
                 x,
-                (alpha_i * signs[i_star] - signs[i]) / np.sqrt(1 + alpha_i**2),
+                v_unit,
                 Delta=Delta,
                 L=L,
             )
 
-            if res == 1:
-                lo = alpha_i
-            else:
+            if res != 1:
                 hi = alpha_i
+            else:
+                lo = alpha_i
 
         alpha[i] = alpha_i
 
     alpha_signed = alpha * signs
     norm = np.linalg.norm(alpha_signed)
-    if norm < 1e-12:
-        g_hat = np.random.normal(size=n)
-        g_hat /= np.linalg.norm(g_hat) + ensure_non_zero(0)
-        return g_hat
-    return alpha_signed / norm
+    return -alpha_signed / ensure_non_zero(norm)

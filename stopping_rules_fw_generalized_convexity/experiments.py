@@ -5,19 +5,18 @@ import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
 
-from common.algorithms import BaseAlgorithm
+from common.algorithmx import BaseAlgorithm
 from common.experiment_utils import title
 from common.latex_utils import latex_table
 from common.lmo import (
     LMO,
-    MinLinearDirectionL2BallLMO,
     SimplexLMO,
     LinfBallLMO,
-    ShiftedBallLMO,
 )
 from common.math_utils import non_singular_matrix, significant_figures, ensure_non_zero
 from common.objectives import Objective, MSE, LogisticRegression
 from common.regularization import L1Regular
+from common.plotting import LineStyle
 from common.plot_utils import preamble, do_show_plot
 from common.utils import log
 
@@ -28,20 +27,6 @@ rng = np.random.default_rng(74)
 
 _TOLERANCE = 1e-20
 _ITERATIONS_COUNT = 2_000
-
-
-class LineStyle:
-
-    _STYLES = ["-", "--", "-."]
-    _counter = 0
-
-    def next(self) -> dict[str, str]:
-        style = self._STYLES[self._counter % len(self._STYLES)]
-        self._counter += 1
-        return {"linestyle": style, "lw": 2}
-
-    def reset(self):
-        self._counter = 0
 
 
 @dataclass
@@ -135,7 +120,6 @@ def _run_convergence_rate_stopping_rule(
             label=data.label,
             **style.next(),
         )
-        # plt.title(rf"{data.obj.__doc__}")
 
     plt.xlabel(r"$k$")
     plt.ylabel(r"$f(x)$")
