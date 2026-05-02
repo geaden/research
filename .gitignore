@@ -12,3 +12,4 @@ __pycache__/
 # Coverage
 htmlcov/
 .coverage
+coverage.xml
