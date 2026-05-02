@@ -6,20 +6,21 @@ from typing import Optional, Type
 import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
-from step import ShortStepSize, DecayingStepSize
-from utils import (
-    log,
-    non_singular_matrix,
-    significant_figures,
-    ensure_non_zero,
-    check_alpha,
+from common.objectives import (
+    Objective,
+    MSE,
+    LogisticRegression,
+    Lasso,
+    AnisoQuadObjective,
 )
-from objectives import Objective, MSE, LogisticRegression, Lasso, AnisoQuadObjective
-from lmo import random_euclidean_ball, MinLinearDirectionL2Ball
+from common.algorithmx.fw import DiminishingStepSizeStrategy, ShortStepSizeStrategy
+from common.math_utils import ensure_non_zero, non_singular_matrix, significant_figures
+from common.plot_utils import SOLID_LINE
+from common.utils import log
+from common.oracles import check_alpha
+from common.oracles.lmo import L2BallLMO
+from utils import random_euclidean_ball
 from algorithms import BaseInexactFW, InexactFW, AdaptiveInexactFW
-
-_SOLID_LINE: tuple[str, str] = ("solid", "b")
-
 
 _FILENAME_PREFIX = "denisov"
 
@@ -167,8 +168,8 @@ def _run_experiment_iterations_per_ball_size(
 
             algorithm = algorithm_cls(
                 obj=data.obj,
-                lmo=MinLinearDirectionL2Ball(ball_radius),
-                step_size=ShortStepSize(data.alpha),
+                lmo=L2BallLMO(radius=ball_radius),
+                step_size=ShortStepSizeStrategy(data.alpha),
                 N=data.N,
                 L=data.L,
                 alpha=data.alpha,
@@ -217,8 +218,8 @@ def _run_adaptive_convergence_based_on_alpha(
 
         result = AdaptiveInexactFW(
             data.obj,
-            lmo=MinLinearDirectionL2Ball(radius=radius),
-            step_size=ShortStepSize(data.alpha),
+            lmo=L2BallLMO(radius=radius),
+            step_size=ShortStepSizeStrategy(data.alpha),
             N=data.N,
             L=data.L,
             alpha=data.alpha,
@@ -241,8 +242,8 @@ def _run_adaptive_convergence_based_on_alpha(
         for alpha in alphas:
             algorithm = AdaptiveInexactFW(
                 data.obj,
-                lmo=MinLinearDirectionL2Ball(radius=radius),
-                step_size=ShortStepSize(alpha),
+                lmo=L2BallLMO(radius=radius),
+                step_size=ShortStepSizeStrategy(alpha),
                 N=data.N,
                 L=data.L,
                 alpha=alpha,
@@ -281,7 +282,7 @@ def _run_comparison_convergence_non_adaptive_and_adaptive(
     data.filename_prefix = _FILENAME_PREFIX
     radius = 2.0
     x0 = np.ones(data.R) * 0.5 * radius
-    lmo = MinLinearDirectionL2Ball(radius=radius)
+    lmo = L2BallLMO(radius=radius)
 
     algorithms = [
         (
@@ -289,7 +290,7 @@ def _run_comparison_convergence_non_adaptive_and_adaptive(
             InexactFW(
                 data.obj,
                 lmo=lmo,
-                step_size=DecayingStepSize(),
+                step_size=DiminishingStepSizeStrategy(),
                 N=data.N,
                 L=data.L,
                 alpha=data.alpha,
@@ -301,7 +302,7 @@ def _run_comparison_convergence_non_adaptive_and_adaptive(
             AdaptiveInexactFW(
                 data.obj,
                 lmo=lmo,
-                step_size=ShortStepSize(data.alpha),
+                step_size=ShortStepSizeStrategy(data.alpha),
                 N=data.N,
                 L=data.L,
                 alpha=data.alpha,
@@ -404,7 +405,7 @@ def _do_plot_convergence(
 
     plt.subplot(1, 2, count)
     for f in fx:
-        style, _ = (lines or [_SOLID_LINE]).pop()
+        style, _ = (lines or [SOLID_LINE]).pop()
         marker = (markers or [None]).pop()
         plt.plot(
             range(0, len(f[:limit])),

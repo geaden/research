@@ -60,25 +60,20 @@ class Lasso(Objective):
     """
 
     def __init__(self, A: np.ndarray, b: np.ndarray, lam: np.float64):
-        self._A = A.copy()
-        self._b = b.copy()
-        self._lam = lam
+        from common.regularization import L1Regular
+
+        self._obj = L1Regular(MSE(A, b), lam=lam)
+        self.__doc__ = self._obj.__doc__
 
     def __call__(self, x: np.ndarray) -> np.ndarray:
-        return 0.5 * np.linalg.norm(self._A @ x - self._b) ** 2 + self._lam * np.sum(
-            np.abs(x)
-        )
+        return self._obj(x)
 
     def grad(self, x: np.ndarray) -> np.ndarray:
-        return self._A.T @ (self._A @ x - self._b)
+        return self._obj.grad(x)
 
 
 class QuadNormObjective(Objective):
-    """
-    Quadratic norm objective function.
-
-    1/2 x^T @ x
-    """
+    r"""$\frac{1}{2} x^\intercal x$"""
 
     def __call__(self, x: np.ndarray) -> np.ndarray:
         return 0.5 * np.dot(x, x)
@@ -87,7 +82,22 @@ class QuadNormObjective(Objective):
         return x
 
 
+class QuadraticObjective(Objective):
+    r"""$\frac{1}{2} x^\intercal A x + b^\intercal x$"""
+
+    def __init__(self, A: np.ndarray, b: np.ndarray):
+        self._A = A.copy()
+        self._b = b.copy()
+
+    def __call__(self, x: np.ndarray) -> np.ndarray:
+        return 0.5 * x @ self._A @ x + self._b @ x
+
+    def grad(self, x: np.ndarray) -> np.ndarray:
+        return self._A @ x + self._b
+
+
 class AnisoQuadObjective(Objective):
+    r"""$\frac{1}{2} x^\intercal Q x$"""
 
     def __init__(self, Q: np.ndarray):
         self._Q = Q.copy()

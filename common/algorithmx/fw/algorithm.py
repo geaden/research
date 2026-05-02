@@ -1,7 +1,7 @@
 import numpy as np
 
 from common.objectives import Objective
-from common.lmo import LMO
+from common.oracles.lmo import LMO
 from common.algorithmx import Result, MaxIterMixin
 
 from .base import BaseFrankWolfe

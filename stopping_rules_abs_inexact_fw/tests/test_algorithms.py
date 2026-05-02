@@ -2,7 +2,7 @@ import numpy as np
 from ..algorithms import AbsoluteInexactGradient
 from ..algorithms import AbsoluteInexactFW
 from common.objectives import MSE
-from common.lmo import MinLinearDirectionL2BallLMO
+from common.oracles.lmo import L2BallLMO
 
 rng = np.random.default_rng(2025)
 
@@ -18,7 +18,7 @@ def test_absolute_inexact_frank_wolfe():
             obj=objective,
             rng=rng,
         ),
-        lmo=MinLinearDirectionL2BallLMO(radius=1.0),
+        lmo=L2BallLMO(radius=1.0),
         L=np.linalg.eigvals(A).max(),
     )
     algorithm._verbose = True

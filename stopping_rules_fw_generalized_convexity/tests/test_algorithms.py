@@ -1,9 +1,8 @@
 import pytest
 import numpy as np
-from common.lmo import LMO, SimplexLMO
+from common.oracles.lmo import LMO, SimplexLMO
 from common.objectives import Objective, MSE
 from ..algorithms import FrankWolfe, FrankWolfeL0L1, AdaptiveFrankWolfeL0L1
-
 
 _DIMENSION = 2
 

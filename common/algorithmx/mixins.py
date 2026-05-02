@@ -2,6 +2,8 @@
 
 import numpy as np
 
+from common.oracles import check_alpha
+
 
 class MaxIterMixin:
     """
@@ -40,7 +42,7 @@ class InexactMixin:
             alpha (float): inexact parameter.
         """
         super().__init__(**kwargs)
-        self._alpha = alpha
+        self._alpha = check_alpha(alpha)
 
     @property
     def alpha(self) -> float:

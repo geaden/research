@@ -1,7 +1,7 @@
 import numpy as np
 
 from common.objectives import MSE
-from common.lmo import ShiftedBallLMO
+from common.oracles.lmo import L2BallLMO
 
 from ..algorithm import FrankWolfe
 from ..step_size import DiminishingStepSizeStrategy
@@ -10,7 +10,7 @@ from ..step_size import DiminishingStepSizeStrategy
 def test_frank_wolfe():
     under_test = FrankWolfe(
         obj=MSE(A=np.array([[1, 2], [3, 4]]), b=[1, 2]),
-        lmo=ShiftedBallLMO(center=1.0),
+        lmo=L2BallLMO(center=1.0),
         step_size=DiminishingStepSizeStrategy(),
         L=0.01,
     )

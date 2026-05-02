@@ -1,7 +1,7 @@
 """Tests for step size strategies."""
 
 import pytest
-from ..step import DecayingStepSize, ShortStepSize
+from ..step_size import DiminishingStepSizeStrategy, ShortStepSizeStrategy
 
 
 @pytest.mark.parametrize(
@@ -12,13 +12,13 @@ from ..step import DecayingStepSize, ShortStepSize
         (1000, 0.001996007984031936),
     ],
 )
-def test_decaying_step_size(k: int, expected: float):
-    """Test decaying step size strategy."""
-    step_size = DecayingStepSize()
+def test_diminishing_step_size(k: int, expected: float):
+    """Test diminishing step size strategy."""
+    step_size = DiminishingStepSizeStrategy()
     assert step_size(k) == expected
 
 
 def test_short_step_size():
     """Test short step size strategy."""
-    step_size = ShortStepSize(alpha=0.5)
+    step_size = ShortStepSizeStrategy(alpha=0.5)
     assert step_size(0, [1, 2, 3], [1, 2, 3], 1.0, 2.0, 3.0) == -0.7142857142857143

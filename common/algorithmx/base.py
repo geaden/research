@@ -1,6 +1,5 @@
 from dataclasses import dataclass
 from abc import ABC, abstractmethod
-from common.objectives import Objective
 
 import numpy as np
 

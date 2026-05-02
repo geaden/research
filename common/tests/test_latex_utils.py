@@ -9,4 +9,4 @@ def test_latex_table():
     print(table)
     assert "||c c||" in table
     assert "a & 0.2 \\" in table
-    assert "\end{table}" in table
+    assert r"\end{table}" in table

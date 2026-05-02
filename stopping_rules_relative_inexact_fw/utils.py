@@ -1,57 +1,9 @@
 """Module contains utility methods."""
 
-import time
 import numpy as np
 
 
-def check_alpha(alpha: float) -> float:
-    """
-    Check if alpha is in [0, 1].
-    """
-    assert 0 <= alpha <= 1, f"Incorrect value of alpha={alpha}"
-    return alpha
-
-
-def dual_gap(inexact_relative_grad: np.ndarray, d: np.ndarray) -> np.float64:
-    """
-    Find dual gap as dot product of inexact relative gradient and search direction.
-    """
-    return np.dot(inexact_relative_grad, d)
-
-
-def log(message: str, verbose: bool = False):
-    """
-    Log message if verbose is |True|.
-    """
-    if verbose:
-        print(f"LOG {time.time()}: {message}")
-
-
-def significant_figures(x: float, n: int = 1) -> float:
-    """Return significant |n| digits of |x|."""
-    return float(f"{x:.{n}g}")
-
-
-def non_singular_matrix(
-    N: int,
-    MinL: np.float64,
-    MaxL: np.float64,
-    MinM: np.float64,
-    MaxM: np.float64,
-) -> np.ndarray:
-    """
-    Construct non singular matrix.
-    """
-    main_diag = np.random.uniform(MinL, MaxL, size=(N,))
-    upper_tri = np.random.uniform(MinM, MaxM, size=(N, N))
-    lower_tri = np.tri(N, k=-1, dtype=np.float64)
-    result_matrix = np.diag(main_diag) + lower_tri * upper_tri
-    return result_matrix.T.astype(np.float64)
-
-
-def ensure_non_zero(x: np.float64) -> np.float64:
-    """
-    Ensure that |x| is non-zero.
-    Close to zero, but not zero to ensure non division by zero occurrence.
-    """
-    return max(x, 1e-20)
+def random_euclidean_ball(R: int, radius: float = 1.0) -> np.ndarray:
+    """Return random point in origin-centered l2-ball."""
+    x = np.random.randn(R)
+    return radius * x / np.linalg.norm(x)

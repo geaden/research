@@ -9,10 +9,9 @@ from common.algorithmx.fw import (
     DiminishingStepSizeStrategy,
 )
 from common.objectives import Objective
-from common.lmo import LMO
+from common.oracles.lmo import LMO
 from common.math_utils import Interval, ensure_non_zero
-from common.oracles import ComparisonOracle, comparison_gde
-
+from common.oracles import ComparisonOracle
 
 _diminishing_step_size = DiminishingStepSizeStrategy()
 
@@ -100,7 +99,7 @@ class AdaptiveFrankWolfeRobustComparison(
         super().__init__(obj=obj, lmo=lmo, max_iter=max_iter, alpha=alpha)
         self._L = L
         self._delta = delta
-        self._oracle = ComparisonOracle(self._obj)
+        self._oracle = ComparisonOracle(self._obj, gamma=self._alpha, delta=self._delta)
         self._tol = tol
 
     def run(self, x0: np.ndarray) -> Result:
@@ -108,13 +107,7 @@ class AdaptiveFrankWolfeRobustComparison(
         self.track(x)
 
         for k in range(self.max_iter):
-            g = comparison_gde(
-                oracle=self._oracle,
-                x=x,
-                gamma=self.alpha,
-                delta=self._delta,
-                L=self._L,
-            )
+            g = self._oracle(x, self._L)
             s = self._lmo(g)
             d = s - x
             gap_hat = -np.dot(g, d)
@@ -122,7 +115,7 @@ class AdaptiveFrankWolfeRobustComparison(
             if gap_hat <= self._tol:
                 break
 
-            denominator = self._L * ensure_non_zero(np.linalg.norm(d) ** 2)
+            denominator = self._L * np.linalg.norm(d) ** 2
             eta = min(gap_hat / denominator, 1.0)
 
             gamma = eta if eta >= 0 else _diminishing_step_size(k)

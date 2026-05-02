@@ -1,10 +1,9 @@
 from ..algorithms import InexactFW
 from ..algorithms import AdaptiveInexactFW
-from ..step import DecayingStepSize, ShortStepSize
+from common.algorithmx.fw import DiminishingStepSizeStrategy, ShortStepSizeStrategy
 from common.objectives import MSE
-from common.lmo import MinLinearDirectionL2BallLMO
+from common.oracles.lmo import L2BallLMO
 import numpy as np
-
 
 np.random.seed(2025)
 
@@ -19,8 +18,8 @@ def test_non_adaptive():
             A=A,
             b=b,
         ),
-        step_size=DecayingStepSize(),
-        lmo=MinLinearDirectionL2BallLMO(radius=1.0),
+        step_size=DiminishingStepSizeStrategy(),
+        lmo=L2BallLMO(radius=1.0),
         L=np.linalg.eigvals(A).max(),
         alpha=alpha,
     )
@@ -43,8 +42,8 @@ def test_adaptive():
             A=A,
             b=b,
         ),
-        step_size=ShortStepSize(alpha=alpha),
-        lmo=MinLinearDirectionL2BallLMO(radius=1.0),
+        step_size=ShortStepSizeStrategy(alpha=alpha),
+        lmo=L2BallLMO(radius=1.0),
         L=np.linalg.eigvals(A).max(),
         alpha=alpha,
     )

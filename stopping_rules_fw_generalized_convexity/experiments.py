@@ -7,13 +7,8 @@ import matplotlib.pyplot as plt
 
 from common.algorithmx import BaseAlgorithm
 from common.experiment_utils import title
-from common.latex_utils import latex_table
-from common.lmo import (
-    LMO,
-    SimplexLMO,
-    LinfBallLMO,
-)
-from common.math_utils import non_singular_matrix, significant_figures, ensure_non_zero
+from common.oracles.lmo import LMO, SimplexLMO, LinfBallLMO
+from common.math_utils import non_singular_matrix, ensure_non_zero
 from common.objectives import Objective, MSE, LogisticRegression
 from common.regularization import L1Regular
 from common.plotting import LineStyle

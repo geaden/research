@@ -3,9 +3,11 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 import numpy as np
-from common.algorithmx import BaseAlgorithm, Result
+from common.algorithmx import Result
+from common.algorithmx.fw import BaseFrankWolfe, dual_gap, ShortStepSizeStrategy
+from common.algorithmx.mixins import MaxIterMixin
 from common.objectives import Objective
-from common.lmo import LMO
+from common.oracles.lmo import LMO
 from common.math_utils import ensure_non_zero
 
 
@@ -45,7 +47,7 @@ class AbsoluteInexactGradient:
         return grad + noise
 
 
-class BaseFW(BaseAlgorithm):
+class BaseInexactFW(BaseFrankWolfe, MaxIterMixin):
 
     def __init__(
         self,
@@ -56,16 +58,13 @@ class BaseFW(BaseAlgorithm):
         N: int = 1000,
         delta: float = 1e-4,
     ):
-        super().__init__()
-        self._obj = obj
+        super().__init__(obj=obj, lmo=lmo, max_iter=N)
         self._inexact_grad = inexact_grad
-        self._lmo = lmo
         self._L = L
-        self._N = N
         self._delta = delta
 
 
-class  AbsoluteInexactFW(BaseFW):
+class AbsoluteInexactFW(BaseInexactFW):
     """
     Implementation of Frank-Wolfe method with absolute inexact gradient.
     """
@@ -73,17 +72,18 @@ class  AbsoluteInexactFW(BaseFW):
     def run(self, x0: np.ndarray) -> Result:
         x = x0.copy().astype(np.float64)
         self.track(x)
+        step_size = ShortStepSizeStrategy()
 
-        for _ in range(self._N):
+        for _ in range(self.max_iter):
             g = self._inexact_grad(x)
             v = self._lmo(g)
             d = v - x
 
-            dual_gap = -np.dot(g, d)
-            if dual_gap**2 <= self._delta**2:
+            dg = dual_gap(g, d)
+            if dg**2 <= self._delta**2:
                 break
 
-            gamma_t = max(min(dual_gap / (2 * self._L * np.linalg.norm(d) ** 2), 1), 0)
+            gamma_t = max(step_size(0, g, d, self._L, 0, 0), 0)
 
             x += gamma_t * d
             self.track(x)

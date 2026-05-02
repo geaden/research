@@ -1,7 +1,7 @@
 import numpy as np
 from common.algorithmx import BaseAlgorithm, Result
 from common.objectives import Objective
-from common.lmo import LMO
+from common.oracles.lmo import LMO
 
 
 class FrankWolfe(BaseAlgorithm):

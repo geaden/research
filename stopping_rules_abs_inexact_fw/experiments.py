@@ -9,7 +9,7 @@ from algorithms import AbsoluteInexactFW, AbsoluteInexactGradient
 from common.experiment_utils import title
 from common.utils import log
 from common.latex_utils import latex_table
-from common.lmo import SimplexLMO, MinLinearDirectionL2BallLMO, ShiftedBallLMO
+from common.oracles.lmo import SimplexLMO, L2BallLMO
 from common.math_utils import non_singular_matrix, significant_figures
 from common.objectives import Objective, MSE, LogisticRegression
 from common.plot_utils import preamble, do_show_plot
@@ -22,9 +22,9 @@ _DELTA = 0.1
 
 _LMOS = [
     SimplexLMO(),
-    MinLinearDirectionL2BallLMO(radius=1.0),
-    MinLinearDirectionL2BallLMO(radius=10.0),
-    ShiftedBallLMO(center=1.0, radius=5.0),
+    L2BallLMO(radius=1.0),
+    L2BallLMO(radius=10.0),
+    L2BallLMO(center=1.0, radius=5.0),
 ]
 
 

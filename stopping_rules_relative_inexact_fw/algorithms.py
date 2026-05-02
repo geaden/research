@@ -1,14 +1,16 @@
 """Module contains algorithms and implementations."""
 
-from abc import ABC, abstractmethod
 from dataclasses import dataclass
 import numpy as np
 from common.gradient import relative_inexact_gradient
 from common.objectives import Objective
-from .step import StepSize
-from .utils import check_alpha, dual_gap
+from common.algorithmx.mixins import MaxIterMixin, InexactMixin
+from common.algorithmx.fw import BaseStepSizeStrategy
+from common.algorithmx.fw import dual_gap
 from common.math_utils import ensure_non_zero
-from common.lmo import LMO
+from common.oracles import check_alpha
+from common.oracles.lmo import LMO
+from common.algorithmx.fw import BaseFrankWolfe
 
 
 @dataclass
@@ -20,9 +22,13 @@ class Result:
     is_adaptive: bool
 
 
-class BaseInexactFW(ABC):
+class BaseInexactFW(
+    BaseFrankWolfe,
+    MaxIterMixin,
+    InexactMixin,
+):
     """
-    Representation of abase inexact Frank-Wolfe.
+    Representation of a base inexact Frank-Wolfe.
     """
 
     _verbose = True
@@ -30,7 +36,7 @@ class BaseInexactFW(ABC):
     def __init__(
         self,
         obj: Objective,
-        step_size: StepSize,
+        step_size: BaseStepSizeStrategy,
         lmo: LMO,
         L: np.float64,
         alpha: float = 0.0,
@@ -45,47 +51,10 @@ class BaseInexactFW(ABC):
             L: L-Lipschitz gradient constant.
             alpha (float): relative inexactness [0,1].
         """
-        self._obj = obj
+        super().__init__(obj=obj, lmo=lmo, alpha=alpha, max_iter=N)
         self._step_size = step_size
-        self._lmo = lmo
         self._L = L
-        self._alpha = alpha
-        check_alpha(self._alpha)
         self._delta = ensure_non_zero(delta)
-        self._N = N
-        self._history = []
-
-    @abstractmethod
-    def run(self, x0: np.ndarray) -> Result:
-        """
-        Run algorithm and return solution.
-
-        Args:
-            x0 (np.ndarray): initial vector
-
-        Returns:
-            np.ndarray: solution
-        """
-        raise NotImplementedError()
-
-    def track(self, x: np.ndarray) -> None:
-        """
-        Add x to history.
-
-        Args:
-            x (np.ndarray): vector to add
-        """
-        self._history.append(x.copy())
-
-    @property
-    def history(self) -> list[np.ndarray]:
-        """
-        Return history.
-
-        Returns:
-            list[np.ndarray]: history
-        """
-        return self._history
 
     def theoretical_iterations(self, result: Result) -> int:
         """
@@ -158,7 +127,7 @@ class InexactFW(BaseInexactFW):
 
         self.track(x)
 
-        for k in range(self._N):
+        for k in range(self.max_iter):
             inexact_relative_grad = self.relative_inexact_gradient(x)
             s = self._lmo(inexact_relative_grad)
             d = s - x
@@ -199,7 +168,7 @@ class AdaptiveInexactFW(BaseInexactFW):
 
         self.track(x)
 
-        for k in range(self._N):
+        for k in range(self.max_iter):
             inexact_relative_grad = self.relative_inexact_gradient(x)
             s = self._lmo(inexact_relative_grad)
             d = s - x

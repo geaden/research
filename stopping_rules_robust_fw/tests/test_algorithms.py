@@ -4,7 +4,7 @@ from ..algorithms import (
     AdaptiveFrankWolfeRobustComparison,
 )
 from common.objectives import MSE
-from common.lmo import MinLinearDirectionL2BallLMO
+from common.oracles.lmo import L2BallLMO
 
 np.random.seed(2026)
 
@@ -12,7 +12,7 @@ np.random.seed(2026)
 def test_adaptive_fw_robust_relative_inexactness():
     algorithm = AdaptiveFrankWolfeRobustRelativeInexactness(
         obj=MSE(A=np.array([[1, 2], [3, 4]]), b=np.array([1, 2])),
-        lmo=MinLinearDirectionL2BallLMO(radius=1.0),
+        lmo=L2BallLMO(radius=1.0),
         L=1.5,
         alpha=0.5,
     )
@@ -25,7 +25,7 @@ def test_adaptive_fw_robust_relative_inexactness():
 def test_adaptive_fw_robust_comparison():
     algorithm = AdaptiveFrankWolfeRobustComparison(
         obj=MSE(A=np.array([[1, 2], [3, 4]]), b=np.array([1, 2])),
-        lmo=MinLinearDirectionL2BallLMO(radius=1.0),
+        lmo=L2BallLMO(radius=1.0),
         L=1.5,
     )
 
