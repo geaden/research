@@ -1,6 +1,5 @@
 """Module contains comparison oracle implementation."""
 
-from typing import Optional
 import numpy as np
 from .base import Oracle
 from common.objectives import Objective
