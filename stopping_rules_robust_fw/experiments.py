@@ -47,7 +47,7 @@ def _setup_experiments(verbose: bool) -> list[ExperimentsData]:
     obj = LogisticRegression(A, y)
     lmo = L2BallLMO(radius=1.0)
 
-    L = 1 / (4 * dim) * np.linalg.eigvals(A).max()
+    L = np.linalg.norm(A, ord=2) ** 2 / (4 * dim)
     log(f"{L=}", verbose=verbose)
 
     x0 = np.zeros(dim)
@@ -146,7 +146,7 @@ def _run_experiment_lasso(verbose: bool, interactive: bool) -> None:
     obj = Lasso(A, b, lam=0.5)
     lmo = L2BallLMO(radius=1.0)
 
-    L = 1 / (4 * dim) * np.linalg.eigvals(A).max()
+    L = np.linalg.norm(A, ord=2) ** 2
     log(f"{L=}", verbose=verbose)
 
     x0 = np.zeros(dim)

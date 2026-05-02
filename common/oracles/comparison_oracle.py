@@ -47,8 +47,7 @@ class ComparisonOracle(Oracle):
         for i in range(n):
             e = np.zeros(n)
             e[i] = 1.0
-            dp = self._directional_preference(x, e, Delta=Delta, L=L)
-            signs[i] *= -1.0 if dp != 1 else 1.0
+            signs[i] = -self._directional_preference(x, e, Delta=Delta, L=L)
 
         # Step 2.
         def dp_compare(i: int, j: int) -> int:
@@ -57,14 +56,15 @@ class ComparisonOracle(Oracle):
             uj = np.zeros(n)
             uj[j] = signs[j]
             v = ui - uj
-            return self._directional_preference(
-                x, 1 / np.sqrt(2.0) * v, Delta=Delta / np.sqrt(2.0), L=L
-            )
+            norm_v = np.linalg.norm(v)
+            if np.isclose(norm_v, 0.0):
+                return 0
+            return self._directional_preference(x, v / norm_v, Delta=Delta / norm_v, L=L)
 
         idx = 0
         for j in range(1, n):
             res = dp_compare(idx, j)
-            if res != 1:
+            if res == -1:
                 idx = j
         i_star = idx
 
@@ -109,7 +109,7 @@ class ComparisonOracle(Oracle):
         return -alpha_signed / ensure_non_zero(norm)
 
     def _comparison_oracle(self, x: np.ndarray, y: np.ndarray) -> int:
-        """Returns -1 if f(y) <= f(x), 1 otherwise."""
+        """Returns sign(f(y) - f(x))."""
         return np.sign(self._obj(y) - self._obj(x))
 
     def _directional_preference(
@@ -121,4 +121,4 @@ class ComparisonOracle(Oracle):
     ) -> int:
         """Returns sign information about scalar product of gradient and |v_unit|."""
         step = (2.0 * Delta / L) * v_unit
-        return self._comparison_oracle(x + step, x)
+        return self._comparison_oracle(x, x + step)
