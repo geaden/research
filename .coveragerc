@@ -1,2 +1,2 @@
 [run]
-omit=*/tests/*.py
+omit = */tests/*.py
