@@ -46,14 +46,14 @@ class AdaptiveFrankWolfeRobustRelativeInexactness(
             inexact_grad = relative_inexact_gradient(self._obj, x, self.alpha)
             s_k = self._lmo(inexact_grad)
             d_k = s_k - x
-            inexact_gap = -np.dot(inexact_grad, d_k)
+            inexact_dual_gap = -np.dot(inexact_grad, d_k)
 
-            if inexact_gap <= self._tol:
+            if inexact_dual_gap <= self._tol:
                 break
 
             M = max(M, np.linalg.norm(inexact_grad))
-            eta = self._eta(inexact_gap, M, d_k)
-            theta = self._theta(inexact_gap, M, d_k)
+            eta = self._eta(inexact_dual_gap, M, d_k)
+            theta = self._theta(inexact_dual_gap, M, d_k)
             gamma = self._gamma(eta, theta)
             if gamma not in Interval(lower=0, upper=1):
                 gamma = _diminishing_step_size(k)
@@ -99,7 +99,7 @@ class AdaptiveFrankWolfeRobustComparison(
         super().__init__(obj=obj, lmo=lmo, max_iter=max_iter, alpha=alpha)
         self._L = L
         self._delta = delta
-        self._oracle = ComparisonOracle(self._obj, gamma=self._alpha, delta=self._delta)
+        self._oracle = ComparisonOracle(self._obj, gamma=self.alpha, delta=self._delta)
         self._tol = tol
 
     def run(self, x0: np.ndarray) -> Result:
@@ -110,13 +110,13 @@ class AdaptiveFrankWolfeRobustComparison(
             g = self._oracle(x, self._L)
             s = self._lmo(g)
             d = s - x
-            gap_hat = -np.dot(g, d)
+            dual_gap = -np.dot(g, d)
 
-            if gap_hat <= self._tol:
+            if dual_gap <= self._tol:
                 break
 
             denominator = self._L * np.linalg.norm(d) ** 2
-            eta = min(gap_hat / denominator, 1.0)
+            eta = min(dual_gap / denominator, 1.0)
 
             gamma = eta if eta >= 0 else _diminishing_step_size(k)
 

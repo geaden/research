@@ -36,12 +36,14 @@ def _setup_experiments(verbose: bool) -> list[ExperimentsData]:
     """
     Setup experiment environment.
     """
-    np.random.seed(2026)
+    _SEED = 71
+
+    np.random.seed(_SEED)
 
     # Dimension of problem
-    dim = 100
+    dim = 20
 
-    A = non_singular_matrix(dim, 0.75, 1.0, -1.0, 1.0, rng=np.random.default_rng(2026))
+    A = non_singular_matrix(dim, 0.75, 1.0, -1.0, 1.0, rng=np.random.default_rng(_SEED))
     y = np.random.choice([-1, 1], size=(dim,))
 
     obj = LogisticRegression(A, y)
@@ -55,18 +57,6 @@ def _setup_experiments(verbose: bool) -> list[ExperimentsData]:
     experiments: list[BaseFrankWolfe] = [
         ExperimentsData(
             obj=obj,
-            algorithm=lambda alpha: FrankWolfe(
-                obj=obj,
-                lmo=lmo,
-                step_size=DiminishingStepSizeStrategy(),
-                L=L,
-                max_iter=_MAX_ITERATIONS,
-            ),
-            title="Classical FW",
-            x0=x0,
-        ),
-        ExperimentsData(
-            obj=obj,
             algorithm=lambda alpha: AdaptiveFrankWolfeRobustRelativeInexactness(
                 obj=obj,
                 lmo=lmo,
@@ -75,7 +65,7 @@ def _setup_experiments(verbose: bool) -> list[ExperimentsData]:
                 max_iter=_MAX_ITERATIONS,
                 tol=_TOLERANCE,
             ),
-            title="Robust FW (Relative Inexactness)",
+            title="FW-Relative Inexactness)",
             x0=x0,
         ),
         ExperimentsData(
@@ -88,7 +78,7 @@ def _setup_experiments(verbose: bool) -> list[ExperimentsData]:
                 max_iter=_MAX_ITERATIONS,
                 tol=_TOLERANCE,
             ),
-            title="Robust FW (Comparison)",
+            title="FW-Comparison Oracle",
             x0=x0,
         ),
     ]
@@ -154,14 +144,15 @@ def _run_experiment_lasso(verbose: bool, interactive: bool) -> None:
     experiments: list[BaseFrankWolfe] = [
         ExperimentsData(
             obj=obj,
-            algorithm=lambda alpha: FrankWolfe(
+            algorithm=lambda alpha: AdaptiveFrankWolfeRobustRelativeInexactness(
                 obj=obj,
                 lmo=lmo,
-                step_size=DiminishingStepSizeStrategy(),
                 L=L,
+                alpha=alpha,
                 max_iter=_MAX_ITERATIONS,
+                tol=_TOLERANCE,
             ),
-            title="Classical FW",
+            title="FW-Relative Inexactness)",
             x0=x0,
         ),
         ExperimentsData(
@@ -187,7 +178,7 @@ def _run_experiment_lasso(verbose: bool, interactive: bool) -> None:
     style = LineStyle()
     plt.figure(figsize=(12, 6), dpi=100)
 
-    alphas = np.linspace(ensure_non_zero(0), 0.999, 100)
+    alphas = np.linspace(ensure_non_zero(0), 0.5, 100)
 
     for data in experiments:
         algorithms = [data.algorithm(alpha) for alpha in alphas]
