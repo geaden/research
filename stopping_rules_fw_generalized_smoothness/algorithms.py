@@ -1,19 +1,52 @@
+"""Module contains Frank-Wolfe algorithms."""
+
+from typing import Optional
 import numpy as np
 from common.algorithmx import BaseAlgorithm, Result
 from common.objectives import Objective
 from common.oracles.lmo import LMO
+from common.utils import log
+
+try:
+    from .stopping_rules import StoppingRuleStrategy
+    from .logger import LOG_ENABLED
+except ImportError:
+    from stopping_rules import StoppingRuleStrategy
+    from logger import LOG_ENABLED
 
 
-class FrankWolfe(BaseAlgorithm):
+class StoppingRuleMixin:
+
+    _stopping_rule: Optional[StoppingRuleStrategy]
+
+    def __init__(
+        self,
+        stopping_rule: StoppingRuleStrategy,
+        **kwargs: dict[str, object],
+    ) -> None:
+        """
+        Args:
+            stopping_rule (StoppingRuleStrategy): stopping rule strategy to use.
+        """
+        super().__init__(**kwargs)
+        self._stopping_rule = stopping_rule
+
+    @property
+    def stopping_rule(self) -> StoppingRuleStrategy:
+        return self._stopping_rule
+
+
+class FrankWolfe(BaseAlgorithm, StoppingRuleMixin):
     def __init__(
         self,
         obj: Objective,
         lmo: LMO,
         L: float,
+        stopping_rule: StoppingRuleStrategy,
         iterations_count: int = 1000,
-        tol=1e-14,
+        tol: float = 1e-14,
     ) -> None:
-        super().__init__()
+        super().__init__(stopping_rule=stopping_rule)
         self._obj = obj
         self._lmo = lmo
         assert L >= 0, "Value of L must be non-negative"
@@ -31,7 +64,7 @@ class FrankWolfe(BaseAlgorithm):
 
             numerator = -np.dot(grad, d_k)
 
-            if numerator**2 <= self._tol:
+            if self.stopping_rule.check(dual_gap=numerator):
                 break
 
             denominator = self._L * np.linalg.norm(d_k) ** 2
@@ -43,7 +76,7 @@ class FrankWolfe(BaseAlgorithm):
         return Result(x0=x0.copy(), x_opt=x.copy())
 
 
-class FrankWolfeL0L1(BaseAlgorithm):
+class FrankWolfeL0L1(BaseAlgorithm, StoppingRuleMixin):
 
     def __init__(
         self,
@@ -51,10 +84,11 @@ class FrankWolfeL0L1(BaseAlgorithm):
         lmo: LMO,
         L0: float,
         L1: float,
+        stopping_rule: StoppingRuleStrategy,
         iterations_count: int = 1000,
         tol=1e-14,
     ) -> None:
-        super().__init__()
+        super().__init__(stopping_rule=stopping_rule)
         self._obj = obj
         self._lmo = lmo
         assert L0 >= 0, "Value of L_0 must be non-negative"
@@ -69,14 +103,13 @@ class FrankWolfeL0L1(BaseAlgorithm):
         x = x0.copy()
         dual_gap = 0
         self.track(x)
-        for _ in range(self._iterations_count):
+        for k in range(self._iterations_count):
             grad = self._obj.grad(x)
             s_k = self._lmo(grad)
             d_k = s_k - x
 
             dual_gap = -np.dot(grad, d_k)
-
-            if dual_gap**2 <= self._tol:
+            if self.stopping_rule.check(dual_gap=dual_gap):
                 break
 
             numerator = dual_gap
@@ -86,12 +119,17 @@ class FrankWolfeL0L1(BaseAlgorithm):
                 * np.e
             )
             alpha_k = min(1, numerator / denominator)
+
+            if self.stopping_rule.check(x=x, alpha=alpha_k, L0=self._L0, L1=self._L1):
+                log(f"Stopping after {k} iterations", verbose=LOG_ENABLED)
+                break
+
             x += alpha_k * d_k
             self.track(x)
         return Result(x0=x0.copy(), x_opt=x.copy())
 
 
-class AdaptiveFrankWolfeL0L1(BaseAlgorithm):
+class AdaptiveFrankWolfeL0L1(BaseAlgorithm, StoppingRuleMixin):
 
     _L_0_max = 1e10
     _L_1_max = 1e10
@@ -102,11 +140,12 @@ class AdaptiveFrankWolfeL0L1(BaseAlgorithm):
         lmo: LMO,
         L0: float,
         L1: float,
+        stopping_rule: StoppingRuleStrategy,
         rho: int = 2,
         iterations_count: int = 1000,
         tol=1e-14,
     ) -> None:
-        super().__init__()
+        super().__init__(stopping_rule=stopping_rule)
         self._obj = obj
         self._lmo = lmo
         assert rho >= 1, "Value of rho must be greater than or equal to 1"
@@ -125,7 +164,8 @@ class AdaptiveFrankWolfeL0L1(BaseAlgorithm):
         self.track(x)
         L0 = self._L0
         L1 = self._L1
-        toggle = False
+        flip = False
+        should_stop = False
         for _ in range(self._iterations_count):
             grad = self._obj.grad(x)
             s_k = self._lmo(grad)
@@ -133,7 +173,7 @@ class AdaptiveFrankWolfeL0L1(BaseAlgorithm):
 
             dual_gap = -np.dot(grad, d_k)
 
-            if dual_gap**2 <= self._tol:
+            if self.stopping_rule.check(dual_gap=dual_gap):
                 break
 
             conv_factor = self._conv_factor(grad, L0, L1)
@@ -145,6 +185,11 @@ class AdaptiveFrankWolfeL0L1(BaseAlgorithm):
                 numerator = dual_gap
                 denominator = conv_factor * np.linalg.norm(d_k) ** 2 * np.e
                 alpha_k = min(1, numerator / denominator)
+
+                if self.stopping_rule.check(x=x, alpha=alpha_k, L0=L0, L1=L1):
+                    should_stop = True
+                    break
+
                 x_next = x + alpha_k * d_k
                 if (
                     self._obj(x_next)
@@ -153,14 +198,17 @@ class AdaptiveFrankWolfeL0L1(BaseAlgorithm):
                     + conv_factor * np.e / 2 * alpha_k**2 * np.linalg.norm(d_k) ** 2
                 ):
                     break
-                elif not toggle:
+                elif not flip:
                     L0 *= self._rho - L0 / conv_factor
                     L0 = min(L0, self._L_0_max)
-                    toggle = True
                 else:
                     L1 *= self._rho - L1 * np.linalg.norm(grad) / conv_factor
                     L1 = min(L1, self._L_1_max)
-                    toggle = False
+
+                flip = not flip
+
+            if should_stop:
+                break
 
             x = x_next
             self.track(x)

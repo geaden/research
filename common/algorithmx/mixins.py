@@ -10,7 +10,7 @@ class MaxIterMixin:
     Maximum number of iterations mixin.
     """
 
-    def __init__(self, max_iter: int = 10000, **kwargs: dict[object, object]) -> None:
+    def __init__(self, max_iter: int = 10000, **kwargs: dict[str, object]) -> None:
         """
         Args:
             N (int): maximum number of iterations.

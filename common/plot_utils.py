@@ -1,5 +1,8 @@
 import matplotlib
 import matplotlib.pyplot as plt
+import seaborn as sns
+
+sns.set_theme(style="white")
 
 SOLID_LINE: tuple[str] = ("-", "b")
 
@@ -22,7 +25,12 @@ def preamble():
     plt.rcParams.update(params)
 
 
-def do_show_plot(filename: str, show_plot: bool, interactive: bool, should_draw: bool = False) -> None:
+def do_show_plot(
+    filename: str,
+    show_plot: bool,
+    interactive: bool,
+    should_draw: bool = False,
+) -> None:
     if not show_plot:
         return
 

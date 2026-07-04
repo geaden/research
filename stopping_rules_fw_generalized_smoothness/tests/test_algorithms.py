@@ -3,6 +3,7 @@ import numpy as np
 from common.oracles.lmo import LMO, SimplexLMO
 from common.objectives import Objective, MSE
 from ..algorithms import FrankWolfe, FrankWolfeL0L1, AdaptiveFrankWolfeL0L1
+from ..stopping_rules import StoppingRuleStrategy, DualGapStoppingRuleStrategy
 
 _DIMENSION = 2
 
@@ -19,14 +20,23 @@ def objective() -> Objective:
     return MSE(A, b)
 
 
+@pytest.fixture
+def stopping_rule() -> StoppingRuleStrategy:
+    return DualGapStoppingRuleStrategy(tol=10e-4)
+
+
 @pytest.fixture()
 def lmo() -> LMO:
     return SimplexLMO()
 
 
-def test_classic_frank_wolfe(objective: Objective, lmo: LMO):
+def test_classic_frank_wolfe(
+    objective: Objective,
+    stopping_rule: StoppingRuleStrategy,
+    lmo: LMO,
+):
     """It should run Classic Frank-Wolfe implementation."""
-    algorithm = FrankWolfe(obj=objective, lmo=lmo, L=1)
+    algorithm = FrankWolfe(obj=objective, lmo=lmo, L=1, stopping_rule=stopping_rule)
 
     result = algorithm.run(np.zeros(_DIMENSION))
 
@@ -34,21 +44,41 @@ def test_classic_frank_wolfe(objective: Objective, lmo: LMO):
     assert len(algorithm.history) == 3
 
 
-def test_frank_wolfe_L0L1(objective: Objective, lmo: LMO):
+def test_frank_wolfe_L0L1(
+    objective: Objective,
+    stopping_rule: StoppingRuleStrategy,
+    lmo: LMO,
+):
     """It should run L0, L1 Frank-Wolfe implementation."""
-    algorithm = FrankWolfeL0L1(obj=objective, lmo=lmo, L0=1e-12, L1=2)
+    algorithm = FrankWolfeL0L1(
+        obj=objective,
+        lmo=lmo,
+        L0=1e-12,
+        L1=2,
+        stopping_rule=stopping_rule,
+    )
 
     result = algorithm.run(np.zeros(_DIMENSION))
 
     assert result
-    assert len(algorithm.history) == 14
+    assert len(algorithm.history) == 11
 
 
-def test_adaptive_frank_wolfe(objective: Objective, lmo: LMO):
+def test_adaptive_frank_wolfe(
+    objective: Objective,
+    stopping_rule: StoppingRuleStrategy,
+    lmo: LMO,
+):
     """It should run Adaptive Frank-Wolfe implementation."""
-    algorithm = AdaptiveFrankWolfeL0L1(obj=objective, lmo=lmo, L0=1e-12, L1=2)
+    algorithm = AdaptiveFrankWolfeL0L1(
+        obj=objective,
+        lmo=lmo,
+        L0=1e-12,
+        L1=2,
+        stopping_rule=stopping_rule,
+    )
 
     result = algorithm.run(np.zeros(_DIMENSION))
 
     assert result
-    assert len(algorithm.history) == 17
+    assert len(algorithm.history) == 8
