@@ -30,10 +30,10 @@ class L2Regular(Objective):
         super().__init__()
         self._obj = obj
         self._lam = lam
-        self.__doc__ = rf"{self._obj.__doc__}$ + \lambda \cdot \|x\|_2^2, \lambda={significant_figures(lam, n=4)}$"
+        self.__doc__ = rf"{self._obj.__doc__}$ + \lambda \cdot \dfrac{{1}}{{2}}\|x\|_2^2, \lambda={significant_figures(lam, n=4)}$"
 
     def __call__(self, x: np.ndarray) -> np.ndarray:
-        return self._obj(x) + self._lam * np.dot(x, x)
+        return self._obj(x) + 0.5 * self._lam * np.dot(x, x)
 
     def grad(self, x: np.ndarray) -> np.ndarray:
-        return self._obj.grad(x) + 2 * self._lam * x
+        return self._obj.grad(x) + self._lam * x

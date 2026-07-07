@@ -30,19 +30,25 @@ def test_convergence_rate_stopping_rule(objective: Objective):
         x0=np.zeros(_DIMENSION),
         obj=objective,
         strong_convexity_const=1,
-        tol=10e-4,
+        tol=1e-4,
     )
 
     assert not stopping_rule.check(dual_gap=1)
 
-    assert stopping_rule.check(x=np.zeros(_DIMENSION), alpha=0.5, L0=1, L1=1)
-    assert stopping_rule._T1 == 2
+    assert stopping_rule.check(
+        x=np.zeros(_DIMENSION), x_next=np.zeros(_DIMENSION), alpha=0.5, L0=1, L1=1
+    )
+    assert stopping_rule._T1 == 1
 
-    assert stopping_rule.check(x=np.zeros(_DIMENSION), alpha=0.5, L0=3, L1=0.5)
-    assert stopping_rule._T2 == 2
+    assert stopping_rule.check(
+        x=np.zeros(_DIMENSION), x_next=np.zeros(_DIMENSION), alpha=0.5, L0=3, L1=0.5
+    )
+    assert stopping_rule._T2 == 1
 
-    assert stopping_rule.check(x=np.zeros(_DIMENSION), alpha=1, L0=1, L1=0.5)
-    assert stopping_rule._T3 == 2
+    assert stopping_rule.check(
+        x=np.zeros(_DIMENSION), x_next=np.zeros(_DIMENSION), alpha=1, L0=1, L1=0.5
+    )
+    assert stopping_rule._T3 == 1
 
 
 def test_dual_gap_stopping_rule():

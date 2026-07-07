@@ -120,7 +120,13 @@ class FrankWolfeL0L1(BaseAlgorithm, StoppingRuleMixin):
             )
             alpha_k = min(1, numerator / denominator)
 
-            if self.stopping_rule.check(x=x, alpha=alpha_k, L0=self._L0, L1=self._L1):
+            if self.stopping_rule.check(
+                x=x,
+                x_next=x + alpha_k * d_k,
+                alpha=numerator / denominator,
+                L0=self._L0,
+                L1=self._L1,
+            ):
                 log(f"Stopping after {k} iterations", verbose=LOG_ENABLED)
                 break
 
@@ -186,11 +192,16 @@ class AdaptiveFrankWolfeL0L1(BaseAlgorithm, StoppingRuleMixin):
                 denominator = conv_factor * np.linalg.norm(d_k) ** 2 * np.e
                 alpha_k = min(1, numerator / denominator)
 
-                if self.stopping_rule.check(x=x, alpha=alpha_k, L0=L0, L1=L1):
+                x_next = x + alpha_k * d_k
+                if self.stopping_rule.check(
+                    x=x,
+                    x_next=x_next * d_k,
+                    alpha=numerator / denominator,
+                    L0=L0,
+                    L1=L1,
+                ):
                     should_stop = True
                     break
-
-                x_next = x + alpha_k * d_k
                 if (
                     self._obj(x_next)
                     <= self._obj(x)

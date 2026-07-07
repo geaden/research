@@ -11,13 +11,12 @@ from common.experiment_utils import title
 from common.oracles.lmo import LMO, SimplexLMO, LinfBallLMO
 from common.math_utils import non_singular_matrix, ensure_non_zero
 from common.objectives import Objective, MSE, LogisticRegression
-from common.regularization import L1Regular
+from common.regularization import L1Regular, L2Regular
 from common.plotting import LineStyle
 from common.plot_utils import preamble, do_show_plot
 from common.utils import log
 
 from algorithms import FrankWolfe, FrankWolfeL0L1, AdaptiveFrankWolfeL0L1
-from logger import LOG_ENABLED
 from stopping_rules import (
     StoppingRuleStrategy,
     DualGapStoppingRuleStrategy,
@@ -101,7 +100,7 @@ def make_experiments(
                 lmo=lmo,
                 L0=L0,
                 L1=L1,
-                stopping_rule=stopping_rule(delta),
+                stopping_rule=DualGapStoppingRuleStrategy(tol=delta),
                 iterations_count=_ITERATIONS_COUNT,
                 tol=delta,
             ),
@@ -162,7 +161,7 @@ def _run_delta_iterations(
 ) -> None:
     log(title("Delta iterations"), verbose=verbose)
 
-    deltas = np.linspace(ensure_non_zero(0), 5 * 10e-4, 100)
+    deltas = np.linspace(ensure_non_zero(0), 5e-3, 100)
 
     style = LineStyle()
 
@@ -204,16 +203,13 @@ def _run_l1_regularization_logreg(verbose: bool, ax: plt.Axes) -> None:
     obj = L1Regular(LogisticRegression(A, y), lam=lam)
     lmo = SimplexLMO()
     L = np.linalg.norm(A, axis=1).max() ** 2
-
-    lmo = SimplexLMO()
-    L = np.linalg.norm(A, axis=1).max() ** 2
     L0 = ensure_non_zero(0)
     L1 = np.linalg.norm(A, axis=1).max()
     log(f"{L=}, {L0=}, {L1=}", verbose=verbose)
 
     experiments = make_experiments(obj, lmo, L, L0, L1, x0)
 
-    deltas = np.linspace(ensure_non_zero(0), 5 * 10e-4, 100)
+    deltas = np.linspace(ensure_non_zero(0), 5e-3, 100)
 
     style = LineStyle()
 
@@ -248,11 +244,12 @@ def _run_l1_regularization_mse_linf_ball(verbose: bool, ax: plt.Axes) -> None:
 
     n: int = 750  # problem dimension
 
-    A = non_singular_matrix(n, 0.75, 1.0, -1.0, 1.0, rng).astype(np.float64)
-    b = rng.random(n).astype(np.float64)
+    A = 0.05 * non_singular_matrix(n, 0.2, 1.0, -1.0, 1.0, rng).astype(np.float64)
+    b = 0.25 * rng.random(n).astype(np.float64)
 
-    x0 = np.zeros(n)
-    lam = ensure_non_zero(1e-4)
+    x0 = -np.ones(n, dtype=np.float64)
+    lam = ensure_non_zero(1e-6)
+    log(f"{lam=}", verbose=verbose)
     obj = L1Regular(MSE(A, b), lam=lam)
 
     L = np.linalg.norm(A, axis=1).max() ** 2
@@ -260,12 +257,11 @@ def _run_l1_regularization_mse_linf_ball(verbose: bool, ax: plt.Axes) -> None:
     L1 = np.linalg.norm(A, axis=1).max()
     log(f"{L=}, {L0=}, {L1=}", verbose=verbose)
 
-    lmo = LinfBallLMO(radius=1.0)
+    lmo = LinfBallLMO(radius=1.0, center=1.0)
 
-    experiments = make_experiments(obj, lmo, L, L0, L1, x0, DualGapStoppingRuleStrategy)
+    experiments = make_experiments(obj, lmo, L, L0, L1, x0)
 
-    deltas = np.linspace(ensure_non_zero(0), 1, 100)
-
+    deltas = np.linspace(ensure_non_zero(0), 5e-3, 100)
     style = LineStyle()
 
     for data in experiments:
@@ -298,21 +294,28 @@ def _run_delta_iterations_convergence_rate_stopping_rule_strategy(
     verbose: bool, ax: plt.Axes
 ) -> None:
     log(
-        title("Delta iterations for convergence rate stopping rule strategy"),
+        title(
+            "L2 regularization MSE with convergence stopping rule Delta - iterations"
+        ),
         verbose=verbose,
     )
-    n: int = 250  # problem dimension
 
-    A = non_singular_matrix(n, 0.75, 1.0, -1.0, 1.0, rng).astype(np.float64)
+    n: int = 750  # problem dimension
 
-    x0 = np.zeros(n)
-    y = rng.choice([-1, 1], size=(n,))
-    obj = LogisticRegression(A, y)
-    lmo = LinfBallLMO(radius=1.0)
+    A = 0.05 * non_singular_matrix(n, 0.2, 1.0, -1.0, 1.0, rng).astype(np.float64)
+    b = 0.25 * rng.random(n).astype(np.float64)
+
+    x0 = -np.ones(n, dtype=np.float64)
+    lam = ensure_non_zero(1e-6)
+    log(f"{lam=}", verbose=verbose)
+    obj = L2Regular(MSE(A, b), lam=lam)
+
     L = np.linalg.norm(A, axis=1).max() ** 2
     L0 = ensure_non_zero(0)
     L1 = np.linalg.norm(A, axis=1).max()
     log(f"{L=}, {L0=}, {L1=}", verbose=verbose)
+
+    lmo = LinfBallLMO(radius=1.0, center=1.0)
 
     experiments = make_experiments(
         obj,
@@ -322,15 +325,11 @@ def _run_delta_iterations_convergence_rate_stopping_rule_strategy(
         L1,
         x0,
         lambda delta: ConvergenceRateStoppingRuleStrategy(
-            x0=x0,
-            obj=obj,
-            strong_convexity_const=1.0,
-            tol=delta,
+            x0=x0, obj=obj, strong_convexity_const=0.5, tol=delta
         ),
     )
 
     deltas = np.linspace(ensure_non_zero(0), 1, 100)
-
     style = LineStyle()
 
     for data in experiments:
@@ -351,18 +350,16 @@ def _run_delta_iterations_convergence_rate_stopping_rule_strategy(
     ax.set_xlabel(r"$\Delta$")
     ax.set_ylabel(r"$k$")
     ax.legend()
-    plot_title = obj.__doc__
+
+    plot_title = obj.__doc__ + rf", {n=}, {lmo}"
     log(plot_title, verbose=verbose)
     ax.set_title(f"({_plot_title.next()})")
     ax.grid()
-
     style.reset()
 
 
 def run_experiments(verbose: bool, interactive: bool):
     log("Running experiments...", verbose=verbose)
-
-    LOG_ENABLED = verbose
 
     experiments = setup_experiments(
         verbose, interactive, lambda delta: DualGapStoppingRuleStrategy(tol=delta)

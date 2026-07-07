@@ -7,6 +7,11 @@ import numpy as np
 from common.objectives import Objective
 from common.utils import log
 
+try:
+    from .logger import LOG_ENABLED
+except ImportError:
+    from logger import LOG_ENABLED
+
 
 class StoppingRuleStrategy(ABC):
     """Abstract stopping rule strategy."""
@@ -28,7 +33,7 @@ class StoppingRuleStrategy(ABC):
 class DualGapStoppingRuleStrategy(StoppingRuleStrategy):
     """Dual gap stopping rule strategy."""
 
-    def __init__(self, tol: float = 10e-4) -> None:
+    def __init__(self, tol: float = 1e-4) -> None:
         """Dual gap stopping rule strategy.
 
         Args:
@@ -51,7 +56,7 @@ class ConvergenceRateStoppingRuleStrategy(StoppingRuleStrategy):
         x0: np.ndarray,
         obj: Objective,
         strong_convexity_const: float,
-        tol: float = 10e-4,
+        tol: float = 1e-4,
     ) -> None:
         """Convergence rate stopping rule strategy.
 
@@ -66,30 +71,27 @@ class ConvergenceRateStoppingRuleStrategy(StoppingRuleStrategy):
         assert strong_convexity_const > 0, "Strong convexity constant must be positive"
         self._lam = strong_convexity_const
         self._tol = tol
-        self._T1 = 1
-        self._T2 = 1
-        self._T3 = 1
-        self._min_grad_norm: float = 1e10
+        self._T1 = 0
+        self._T2 = 0
+        self._T3 = 0
+        self._k = 0
 
     def check(self, **kwargs: dict[str, object]) -> bool:
         log(f"{self}=")
         if "x" not in kwargs:
             return False
 
-        x = kwargs.get("x")
+        if self._k == 0:
+            self._min_grad_norm = np.linalg.norm(self._obj.grad(kwargs.get("x")))
+
+        # Accumulate info about iterations for the next step.
+        x_next = kwargs.get("x_next")
         alpha = kwargs.get("alpha")
         L0 = kwargs.get("L0")
         L1 = kwargs.get("L1")
-        grad_norm = np.linalg.norm(self._obj.grad(x))
+        grad_norm = np.linalg.norm(self._obj.grad(x_next))
         self._min_grad_norm = min(grad_norm, self._min_grad_norm)
 
-        T1 = (self._lam * self._tol) / (2 * np.e * L1) * self._T1
-        T2 = (self._lam * self._min_grad_norm * self._tol) / (2 * np.e * L0) * self._T2
-        T3 = 0.5 * self._tol * self._T3
-
-        stopped = self._obj(self._x0) - self._obj(x) <= T1 + T2 + T3
-
-        # Accumulate info about iterations for the next step.
         if alpha < 1:
             if L0 <= L1 * grad_norm:
                 self._T1 += 1
@@ -97,5 +99,20 @@ class ConvergenceRateStoppingRuleStrategy(StoppingRuleStrategy):
                 self._T2 += 1
         else:
             self._T3 += 1
+
+        log(
+            f"{alpha=} | {self._k=} | {self._T1=} | {self._T2=} | {self._T3=}",
+            verbose=LOG_ENABLED,
+        )
+
+        T1 = (self._lam * self._tol) / (2 * np.e * L1) * self._T1
+        T2 = (self._lam * self._min_grad_norm * self._tol) / (2 * np.e * L0) * self._T2
+        T3 = 0.5 * self._tol * self._T3
+
+        stopped = self._obj(self._x0) - self._obj(x_next) <= T1 + T2 + T3
+
+        self._k += 1
+        N = self._T1 + self._T2 + self._T3
+        assert N == self._k, f"{N} != {self._k}"
 
         return stopped

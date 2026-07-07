@@ -22,7 +22,7 @@ def objective() -> Objective:
 
 @pytest.fixture
 def stopping_rule() -> StoppingRuleStrategy:
-    return DualGapStoppingRuleStrategy(tol=10e-4)
+    return DualGapStoppingRuleStrategy(tol=1e-4)
 
 
 @pytest.fixture()
@@ -61,7 +61,7 @@ def test_frank_wolfe_L0L1(
     result = algorithm.run(np.zeros(_DIMENSION))
 
     assert result
-    assert len(algorithm.history) == 11
+    assert len(algorithm.history) == 12
 
 
 def test_adaptive_frank_wolfe(
@@ -81,4 +81,4 @@ def test_adaptive_frank_wolfe(
     result = algorithm.run(np.zeros(_DIMENSION))
 
     assert result
-    assert len(algorithm.history) == 8
+    assert len(algorithm.history) == 10
