@@ -181,7 +181,7 @@ def _run_delta_iterations(
         )
 
     ax.set_xlabel(r"$\Delta$")
-    ax.set_ylabel(r"$k$")
+    ax.set_ylabel(r"$N$")
     ax.legend()
     ax.set_title(f"({_plot_title.next()})")
     ax.grid()
@@ -229,7 +229,7 @@ def _run_l1_regularization_logreg(verbose: bool, ax: plt.Axes) -> None:
         )
 
     ax.set_xlabel(r"$\Delta$")
-    ax.set_ylabel(r"$k$")
+    ax.set_ylabel(r"$N$")
     ax.legend()
     plot_title = obj.__doc__
     log(plot_title, verbose=verbose)
@@ -244,7 +244,7 @@ def _run_l1_regularization_mse_linf_ball(verbose: bool, ax: plt.Axes) -> None:
 
     n: int = 750  # problem dimension
 
-    A = 0.05 * non_singular_matrix(n, 0.2, 1.0, -1.0, 1.0, rng).astype(np.float64)
+    A = 0.01 * non_singular_matrix(n, 0.2, 1.0, -1.0, 1.0, rng).astype(np.float64)
     b = 0.25 * rng.random(n).astype(np.float64)
 
     x0 = -np.ones(n, dtype=np.float64)
@@ -280,7 +280,7 @@ def _run_l1_regularization_mse_linf_ball(verbose: bool, ax: plt.Axes) -> None:
         )
 
     ax.set_xlabel(r"$\Delta$")
-    ax.set_ylabel(r"$k$")
+    ax.set_ylabel(r"$N$")
     ax.legend()
 
     plot_title = obj.__doc__ + rf", {n=}, {lmo}"
@@ -302,7 +302,7 @@ def _run_delta_iterations_convergence_rate_stopping_rule_strategy(
 
     n: int = 750  # problem dimension
 
-    A = 0.05 * non_singular_matrix(n, 0.2, 1.0, -1.0, 1.0, rng).astype(np.float64)
+    A = 0.01 * non_singular_matrix(n, 0.2, 1.0, -1.0, 1.0, rng).astype(np.float64)
     b = 0.25 * rng.random(n).astype(np.float64)
 
     x0 = -np.ones(n, dtype=np.float64)
@@ -325,12 +325,20 @@ def _run_delta_iterations_convergence_rate_stopping_rule_strategy(
         L1,
         x0,
         lambda delta: ConvergenceRateStoppingRuleStrategy(
-            x0=x0, obj=obj, strong_convexity_const=0.5, tol=delta
+            x0=x0, obj=obj, strong_convexity_const=1.0, tol=delta
         ),
-    )
+    )[1:-1]
 
-    deltas = np.linspace(ensure_non_zero(0), 1, 100)
+    deltas = np.linspace(2e-4, 5e-4, 100)
     style = LineStyle()
+
+    # Theoretical results
+    ax.semilogy(
+        deltas,
+        [ensure_non_zero(1 / delta) for delta in deltas],
+        label="Theoretical",
+        **style.next(),
+    )
 
     for data in experiments:
 
@@ -340,7 +348,7 @@ def _run_delta_iterations_convergence_rate_stopping_rule_strategy(
             return len(algorithm.history) - 1
 
         iterations: list[int] = list(map(iterations_count, deltas))
-        ax.plot(
+        ax.semilogy(
             deltas,
             iterations,
             label=data.label,
@@ -348,7 +356,7 @@ def _run_delta_iterations_convergence_rate_stopping_rule_strategy(
         )
 
     ax.set_xlabel(r"$\Delta$")
-    ax.set_ylabel(r"$k$")
+    ax.set_ylabel(r"$\log(N)$")
     ax.legend()
 
     plot_title = obj.__doc__ + rf", {n=}, {lmo}"
