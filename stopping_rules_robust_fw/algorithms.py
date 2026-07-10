@@ -95,11 +95,17 @@ class AdaptiveFrankWolfeRobustComparison(
         delta: Optional[np.float64] = 1e-3,
         max_iter: Optional[int] = 10000,
         tol: Optional[float] = 1e-6,
+        nu: Optional[float] = None,
     ) -> None:
         super().__init__(obj=obj, lmo=lmo, max_iter=max_iter, alpha=alpha)
         self._L = L
         self._delta = delta
-        self._oracle = ComparisonOracle(self._obj, gamma=self.alpha, delta=self._delta)
+        self._oracle = ComparisonOracle(
+            self._obj,
+            gamma=self.alpha,
+            delta=self._delta,
+            nu=nu,
+        )
         self._tol = tol
 
     def run(self, x0: np.ndarray) -> Result:
@@ -118,7 +124,7 @@ class AdaptiveFrankWolfeRobustComparison(
             denominator = self._L * np.linalg.norm(d) ** 2
             eta = min(dual_gap / denominator, 1.0)
 
-            gamma = eta if eta >= 0 else _diminishing_step_size(k)
+            gamma = max(0, eta)
 
             x += gamma * d
             self.track(x)

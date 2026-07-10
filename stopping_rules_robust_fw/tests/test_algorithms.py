@@ -27,8 +27,9 @@ def test_adaptive_fw_robust_comparison():
         obj=MSE(A=np.array([[1, 2], [3, 4]]), b=np.array([1, 2])),
         lmo=L2BallLMO(radius=1.0),
         L=1.5,
+        nu=0.5,
     )
 
     algorithm.run(np.array([1, 2]))
 
-    assert len(algorithm.history) == 10001
+    assert len(algorithm.history) == 1
