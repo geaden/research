@@ -96,10 +96,10 @@ class ComparisonOracle(Oracle):
                     L=L,
                 )
 
-                if res != 1:
-                    hi = alpha_i
-                else:
+                if res == 1:
                     lo = alpha_i
+                else:
+                    hi = alpha_i
 
             alpha[i] = alpha_i
 

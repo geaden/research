@@ -53,7 +53,6 @@ class NormalizedGradientMethodHoelder(BaseAlgorithm, MaxIterMixin):
         for _ in range(self.max_iter):
             # Step 3: Get approximate gradient from Algorithm 2
             g_k = self._oracle(x, self._L_nu)
-            # Step 5: Update x
             x += h * g_k
             self.track(x)
 
