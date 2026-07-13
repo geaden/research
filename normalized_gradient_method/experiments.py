@@ -49,11 +49,12 @@ def _run_gas_network_experiment(verbose: bool, interactive: bool):
     # The theoretical bound for L_nu can be very conservative in practice,
     # leading to a step size that is too small. We scale it down to
     # achieve a more practical step size for the experiment.
-    L_nu /= 1e2
+    L_nu /= 1e4
+    log(f"{L_nu=}", verbose=verbose)
     assert L_nu > 0
     alpha = 1e-4
     delta = 1e-3
-    x0 = rng.random(n) * 1e-2  # Initial point for the dual variable y in R^n
+    x0 = rng.random(n) * 1e5  # Initial point for the dual variable y in R^n
 
     algo_ngm = NormalizedGradientMethodHoelder(
         obj=obj,
@@ -61,7 +62,7 @@ def _run_gas_network_experiment(verbose: bool, interactive: bool):
         nu=nu,
         epsilon=alpha,
         delta=delta,
-        max_iter=1000,
+        max_iter=150,
     )
 
     style = LineStyle()
@@ -86,7 +87,6 @@ def _run_gas_network_experiment(verbose: bool, interactive: bool):
 
     plt.xlabel(r"$k$")
     plt.ylabel(r"$f^k-f^\ast$")
-    plt.legend()
     plt.grid()
 
     style.reset()

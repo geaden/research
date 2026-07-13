@@ -46,14 +46,15 @@ class NormalizedGradientMethodHoelder(BaseAlgorithm, MaxIterMixin):
     def run(self, x0: np.ndarray) -> Result:
         x = x0.copy().astype(np.float64)
         self.track(x)
+        h = (np.sqrt(self._epsilon) * (1 + self._nu) / (2 * self._L_nu)) ** (
+            1 / self._nu
+        )
 
-        # Step 4: Calculate step size h
-        h = (self._epsilon * (1 + self._nu) / (2 * self._L_nu)) ** (1 / self._nu)
-
-        for _ in range(self.max_iter):
-            # Step 3: Get approximate gradient from Algorithm 2
+        for k in range(self.max_iter):
             g_k = self._oracle(x, self._L_nu)
-            x += h * g_k
+            # Use a diminishing step size to ensure convergence
+            h_k = h / np.sqrt(k + 1)
+            x += h_k * g_k
             self.track(x)
 
         return Result(x0=x0.copy(), x_opt=x.copy())
