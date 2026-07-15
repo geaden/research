@@ -5,6 +5,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from common.math_utils import ensure_non_zero
+from common.latex_utils import latex_table
+from common.math_utils import ensure_non_zero, significant_figures
 from common.oracles.lmo import L2BallLMO
 from common.plotting.line_style import LineStyle
 from stopping_rules_robust_fw.algorithms import AdaptiveFrankWolfeRobustComparison
@@ -58,14 +60,47 @@ def _plot_iterations_vs_epsilon(
     valid_epsilons = np.array(valid_epsilons)
     practical_iterations = np.array(practical_iterations)
 
-    ax.plot(valid_epsilons, practical_iterations, label="Practical")
-
     K_upper_bound = np.max(practical_iterations * valid_epsilons)
 
     theoretical_base_term = n * np.log(n / delta)
     C_estimated = K_upper_bound / ensure_non_zero(theoretical_base_term)
 
     theoretical_iterations = C_estimated * (1 / valid_epsilons) * theoretical_base_term
+
+    if len(valid_epsilons) > 0:
+        num_samples = min(10, len(valid_epsilons))
+        indices = np.linspace(0, len(valid_epsilons) - 1, num_samples, dtype=int)
+
+        table_values = []
+        for i in indices:
+            eps_val = valid_epsilons[i]
+            N_practical = practical_iterations[i]
+            N_theoretical = theoretical_iterations[i]
+            exponent = int(np.floor(np.log10(eps_val)))
+            mantissa = eps_val / (10**exponent)
+            eps_formatted = rf"${significant_figures(mantissa, 3)} \cdot 10^{{{exponent}}}$"
+            table_values.append(
+                (
+                    eps_formatted,
+                    N_practical,
+                    int(np.ceil(N_theoretical)),
+                )
+            )
+
+        print(
+            latex_table(
+                caption=r"Количество итераций $N$ для заданной точности $\varepsilon$",
+                values=table_values,
+                headers=[
+                    r"$\varepsilon$",
+                    r"$N$ (практическое)",
+                    r"$N$ (теоретическое)",
+                ],
+            )
+        )
+
+    ax.plot(valid_epsilons, practical_iterations, label="Practical")
+
     ax.plot(
         valid_epsilons,
         theoretical_iterations,
