@@ -15,6 +15,9 @@ from objectives import GasNetworkObjective, TwoLayerNetwork
 
 _SEED = 103
 
+_EPSILON = 1e-4
+_DELTA = 1e-3
+
 
 def _run_gas_network_experiment(verbose: bool, interactive: bool):
     nu = 0.5
@@ -52,23 +55,21 @@ def _run_gas_network_experiment(verbose: bool, interactive: bool):
     L_nu /= 1e4
     log(f"{L_nu=}", verbose=verbose)
     assert L_nu > 0
-    alpha = 1e-4
-    delta = 1e-3
     x0 = rng.random(n) * 1e5  # Initial point for the dual variable y in R^n
 
     algo_ngm = NormalizedGradientMethodHoelder(
         obj=obj,
         L_nu=L_nu,
         nu=nu,
-        epsilon=alpha,
-        delta=delta,
-        max_iter=150,
+        epsilon=_EPSILON,
+        delta=_DELTA,
+        max_iter=50,
     )
 
     style = LineStyle()
 
     log("Running Gas Network Experiment...", verbose=verbose)
-    log("Running Normalized Gradient Method (Algorithm 3)...", verbose=verbose)
+    log("Running Normalized Gradient Method...", verbose=verbose)
     result_ngm = algo_ngm.run(x0)
     log(f"Optimal value (NGM): {obj(result_ngm.x_opt)}", verbose=verbose)
 
@@ -116,17 +117,17 @@ def _run_logistic_regression_experiment(verbose: bool, interactive: bool):
     # Algorithm parameters
     # For logistic regression, L can be estimated as 0.25 * ||A||_2^2 / n
     L_nu = 0.25 * np.linalg.norm(A, ord=2) ** 2 / n_samples
-    epsilon = 1e-4
-    delta = 1e-3
+    log(f"{L_nu=}", verbose=verbose)
+    assert L_nu > 0
     x0 = np.zeros(n_features)
 
     algo_ngm = NormalizedGradientMethodHoelder(
         obj=obj,
         L_nu=L_nu,
         nu=nu,
-        epsilon=epsilon,
-        delta=delta,
-        max_iter=5000,
+        epsilon=_EPSILON,
+        delta=_DELTA,
+        max_iter=1000,
     )
 
     style = LineStyle()
@@ -166,9 +167,9 @@ def _run_two_layer_network_experiment(verbose: bool, interactive: bool):
     plt.figure(figsize=(12, 6), dpi=100)
 
     # Setup a sample problem
-    n_samples = 100
+    n_samples = 400
     n_features = 20
-    n_hidden = 50
+    n_hidden = 20
     rng = np.random.default_rng(_SEED)
     X = rng.random((n_samples, n_features))
 
@@ -183,18 +184,18 @@ def _run_two_layer_network_experiment(verbose: bool, interactive: bool):
     obj = TwoLayerNetwork(X=X, y=y, n_hidden=n_hidden, seed=_SEED)
 
     # Algorithm parameters
-    L_nu = np.linalg.norm(obj.A, ord=2) ** 2
-    epsilon = 1e-4
-    delta = 1e-3
+    L_nu = np.linalg.norm(obj.A, ord=2) ** 2 / n_samples
+    log(f"{L_nu=}", verbose=verbose)
+    assert L_nu > 0
     x0 = np.zeros(n_hidden + 1)
 
     algo_ngm = NormalizedGradientMethodHoelder(
         obj=obj,
         L_nu=L_nu,
         nu=nu,
-        epsilon=epsilon,
-        delta=delta,
-        max_iter=5000,
+        epsilon=_EPSILON,
+        delta=_DELTA,
+        max_iter=10000,
     )
 
     style = LineStyle()

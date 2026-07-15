@@ -52,9 +52,7 @@ class NormalizedGradientMethodHoelder(BaseAlgorithm, MaxIterMixin):
 
         for k in range(self.max_iter):
             g_k = self._oracle(x, self._L_nu)
-            # Use a diminishing step size to ensure convergence
-            h_k = h / np.sqrt(k + 1)
-            x += h_k * g_k
+            x += h * g_k
             self.track(x)
 
         return Result(x0=x0.copy(), x_opt=x.copy())
