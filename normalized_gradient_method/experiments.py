@@ -1,8 +1,10 @@
 """Module contains experiment implementations."""
 
+from typing import Any
 import numpy as np
 import matplotlib.pyplot as plt
 
+from common.math_utils import ensure_non_zero
 from common.oracles.lmo import L2BallLMO
 from common.plotting.line_style import LineStyle
 from stopping_rules_robust_fw.algorithms import AdaptiveFrankWolfeRobustComparison
@@ -19,21 +21,75 @@ _EPSILON = 1e-4
 _DELTA = 1e-3
 
 
+def _plot_iterations_vs_epsilon(
+    ax: plt.Axes,
+    history: list[np.ndarray],
+    obj: Any,
+    f_star: float,
+    delta: float,
+):
+    """Helper to plot iterations vs epsilon comparison."""
+
+    n = len(history)
+
+    practical_diff = np.array([obj(x) - f_star for x in history])
+
+    positive_diffs = practical_diff[practical_diff > 1e-12]
+    if len(positive_diffs) < 2:
+        return  # Not enough data to plot
+
+    min_eps = np.min(positive_diffs)
+    max_eps = np.max(positive_diffs)
+
+    epsilons = np.logspace(np.log10(min_eps), np.log10(max_eps), num=20)
+
+    practical_iterations = []
+    valid_epsilons = []
+
+    for eps in epsilons:
+        found_k = np.where(practical_diff <= eps)[0]
+        if len(found_k) > 0:
+            practical_iterations.append(found_k[0])
+            valid_epsilons.append(eps)
+
+    if len(valid_epsilons) < 2:
+        return  # Not enough points to plot
+
+    valid_epsilons = np.array(valid_epsilons)
+    practical_iterations = np.array(practical_iterations)
+
+    ax.plot(valid_epsilons, practical_iterations, label="Practical")
+
+    K_upper_bound = np.max(practical_iterations * valid_epsilons)
+
+    theoretical_base_term = n * np.log(n / delta)
+    C_estimated = K_upper_bound / ensure_non_zero(theoretical_base_term)
+
+    theoretical_iterations = C_estimated * (1 / valid_epsilons) * theoretical_base_term
+    ax.plot(
+        valid_epsilons,
+        theoretical_iterations,
+        label=r"Theoretical $O(\frac{1}{\varepsilon} n \log \frac{n}{\delta})$",
+        linestyle="--",
+    )
+
+    ax.set_xlabel(r"$\varepsilon$")
+    ax.set_ylabel(r"$N$")
+    ax.set_xscale("log")
+    ax.set_yscale("log")
+
+
 def _run_gas_network_experiment(verbose: bool, interactive: bool):
     nu = 0.5
 
     if not interactive:
         preamble()
 
-    plt.figure(figsize=(12, 6), dpi=100)
+    _, axs = plt.subplots(1, 2, figsize=(12, 6), dpi=100)
 
-    # Setup a sample problem
     m = 10  # number of pipelines
     n = 5  # number of nodes
     rng = np.random.default_rng(_SEED)
-    # Generate alpha from a stable range to avoid near-zero values,
-    # which would cause the theoretical L_nu to become excessively large
-    # and the algorithm's step size to become near-zero.
     alpha_vec = rng.uniform(0.1, 1.0, size=m)
     A = rng.random((n, m))
     d = rng.random(n)
@@ -41,7 +97,6 @@ def _run_gas_network_experiment(verbose: bool, interactive: bool):
     p = 3
     obj = GasNetworkObjective(alpha=alpha_vec, A=A, d=d, p=p)
 
-    # Algorithm parameters
     L_nu = (
         (2 / (3 * np.sqrt(3)))
         * (1 / p) ** 1.5
@@ -49,13 +104,10 @@ def _run_gas_network_experiment(verbose: bool, interactive: bool):
         * np.max(1 / np.sqrt(alpha_vec))
         * (np.linalg.norm(A, ord=2) ** 1.5)
     )
-    # The theoretical bound for L_nu can be very conservative in practice,
-    # leading to a step size that is too small. We scale it down to
-    # achieve a more practical step size for the experiment.
     L_nu /= 1e4
     log(f"{L_nu=}", verbose=verbose)
     assert L_nu > 0
-    x0 = rng.random(n) * 1e5  # Initial point for the dual variable y in R^n
+    x0 = rng.random(n) * 1e5
 
     algo_ngm = NormalizedGradientMethodHoelder(
         obj=obj,
@@ -78,19 +130,19 @@ def _run_gas_network_experiment(verbose: bool, interactive: bool):
     def calculate_diff(x: np.ndarray) -> np.float64:
         return obj(x) - f_star
 
-    plt.plot(
+    axs[0].plot(
         np.arange(len(algo_ngm.history)),
         list(map(calculate_diff, algo_ngm.history)),
         **style.next(),
     )
 
-    style.reset()
+    axs[0].set_xlabel(r"$k$")
+    axs[0].set_ylabel(r"$f^k-f^\ast$")
+    axs[0].grid()
 
-    plt.xlabel(r"$k$")
-    plt.ylabel(r"$f^k-f^\ast$")
-    plt.grid()
+    _plot_iterations_vs_epsilon(axs[1], algo_ngm.history, obj, f_star, _DELTA)
 
-    style.reset()
+    plt.tight_layout()
     do_show_plot(filename="ngm.pgf", show_plot=True, interactive=interactive)
 
 
@@ -103,9 +155,8 @@ def _run_logistic_regression_experiment(verbose: bool, interactive: bool):
     if not interactive:
         preamble()
 
-    plt.figure(figsize=(12, 6), dpi=100)
+    _, axs = plt.subplots(1, 2, figsize=(12, 6), dpi=100)
 
-    # Setup a sample problem
     n_samples = 100
     n_features = 20
     rng = np.random.default_rng(_SEED)
@@ -114,8 +165,6 @@ def _run_logistic_regression_experiment(verbose: bool, interactive: bool):
 
     obj = LogisticRegression(A=A, y=y)
 
-    # Algorithm parameters
-    # For logistic regression, L can be estimated as 0.25 * ||A||_2^2 / n
     L_nu = 0.25 * np.linalg.norm(A, ord=2) ** 2 / n_samples
     log(f"{L_nu=}", verbose=verbose)
     assert L_nu > 0
@@ -141,15 +190,18 @@ def _run_logistic_regression_experiment(verbose: bool, interactive: bool):
     def calculate_diff(x: np.ndarray) -> np.float64:
         return obj(x) - f_star
 
-    plt.plot(
+    axs[0].plot(
         np.arange(len(algo_ngm.history)),
         list(map(calculate_diff, algo_ngm.history)),
         **style.next(),
     )
 
-    plt.xlabel(r"$k$")
-    plt.ylabel(r"$f^k-f^\ast$")
-    plt.grid()
+    axs[0].set_xlabel(r"$k$")
+    axs[0].set_ylabel(r"$f^k-f^\ast$")
+    axs[0].grid()
+
+    _plot_iterations_vs_epsilon(axs[1], algo_ngm.history, obj, f_star, _DELTA)
+    plt.tight_layout()
     do_show_plot(filename="ngm_logreg.pgf", show_plot=True, interactive=interactive)
 
 
@@ -159,31 +211,28 @@ def _run_two_layer_network_experiment(verbose: bool, interactive: bool):
     This uses a random feature model, where the first layer is fixed and random,
     and only the second layer is trained.
     """
-    nu = 1.0  # The objective is MSE on random features, which has a Lipschitz gradient.
+    nu = 1.0
 
     if not interactive:
         preamble()
 
-    plt.figure(figsize=(12, 6), dpi=100)
+    _, axs = plt.subplots(1, 2, figsize=(12, 6), dpi=100)
 
-    # Setup a sample problem
     n_samples = 400
     n_features = 20
     n_hidden = 20
     rng = np.random.default_rng(_SEED)
     X = rng.random((n_samples, n_features))
 
-    # Generate a true function and then the targets
     true_w1 = rng.standard_normal((n_hidden, n_features))
     true_b1 = rng.standard_normal((n_hidden,))
-    true_w2 = rng.standard_normal((n_hidden + 1,))  # with bias
+    true_w2 = rng.standard_normal((n_hidden + 1,))
     H_true = np.maximum(0, X @ true_w1.T + true_b1)
     H_true = np.c_[H_true, np.ones(n_samples)]
-    y = H_true @ true_w2 + rng.normal(0, 0.1, size=n_samples)  # add some noise
+    y = H_true @ true_w2 + rng.normal(0, 0.1, size=n_samples)
 
     obj = TwoLayerNetwork(X=X, y=y, n_hidden=n_hidden, seed=_SEED)
 
-    # Algorithm parameters
     L_nu = np.linalg.norm(obj.A, ord=2) ** 2 / n_samples
     log(f"{L_nu=}", verbose=verbose)
     assert L_nu > 0
@@ -209,15 +258,18 @@ def _run_two_layer_network_experiment(verbose: bool, interactive: bool):
     def calculate_diff(x: np.ndarray) -> np.float64:
         return obj(x) - f_star
 
-    plt.plot(
+    axs[0].plot(
         np.arange(len(algo_ngm.history)),
         list(map(calculate_diff, algo_ngm.history)),
         **style.next(),
     )
 
-    plt.xlabel(r"$k$")
-    plt.ylabel(r"$f^k-f^\ast$")
-    plt.grid()
+    axs[0].set_xlabel(r"$k$")
+    axs[0].set_ylabel(r"$f^k-f^\ast$")
+    axs[0].grid()
+
+    _plot_iterations_vs_epsilon(axs[1], algo_ngm.history, obj, f_star, _DELTA)
+    plt.tight_layout()
     do_show_plot(filename="ngm_2layer.pgf", show_plot=True, interactive=interactive)
 
 
