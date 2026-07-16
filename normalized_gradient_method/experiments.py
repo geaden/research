@@ -40,10 +40,10 @@ def _plot_iterations_vs_epsilon(
     if len(positive_diffs) < 2:
         return  # Not enough data to plot
 
-    min_eps = np.min(positive_diffs)
-    max_eps = np.max(positive_diffs)
+    min_eps = 1e-8
+    max_eps = 1e-1
 
-    epsilons = np.logspace(np.log10(min_eps), np.log10(max_eps), num=20)
+    epsilons = np.logspace(np.log10(min_eps), np.log10(max_eps), num=10)
 
     practical_iterations = []
     valid_epsilons = []
@@ -68,34 +68,29 @@ def _plot_iterations_vs_epsilon(
     theoretical_iterations = C_estimated * (1 / valid_epsilons) * theoretical_base_term
 
     if len(valid_epsilons) > 0:
-        num_samples = min(10, len(valid_epsilons))
+        num_samples = min(8, len(valid_epsilons))
         indices = np.linspace(0, len(valid_epsilons) - 1, num_samples, dtype=int)
 
         table_values = []
         for i in indices:
             eps_val = valid_epsilons[i]
             N_practical = practical_iterations[i]
-            N_theoretical = theoretical_iterations[i]
-            exponent = int(np.floor(np.log10(eps_val)))
-            mantissa = eps_val / (10**exponent)
-            eps_formatted = rf"${significant_figures(mantissa, 3)} \cdot 10^{{{exponent}}}$"
-            table_values.append(
-                (
-                    eps_formatted,
-                    N_practical,
-                    int(np.ceil(N_theoretical)),
+            if eps_val < 1:
+                exponent_float = -np.log10(eps_val)
+                eps_formatted = rf"$10^{{{-exponent_float:.1f}}}$"
+            else:
+                exponent = int(np.floor(np.log10(eps_val)))
+                mantissa = eps_val / (10**exponent)
+                eps_formatted = (
+                    rf"${significant_figures(mantissa, 3)} \cdot 10^{{{exponent}}}$"
                 )
-            )
+            table_values.append((eps_formatted, N_practical))
 
         print(
             latex_table(
                 caption=r"Количество итераций $N$ для заданной точности $\varepsilon$",
                 values=table_values,
-                headers=[
-                    r"$\varepsilon$",
-                    r"$N$ (практическое)",
-                    r"$N$ (теоретическое)",
-                ],
+                headers=[r"$\varepsilon$", r"$N$"],
             )
         )
 
@@ -139,10 +134,9 @@ def _run_gas_network_experiment(verbose: bool, interactive: bool):
         * np.max(1 / np.sqrt(alpha_vec))
         * (np.linalg.norm(A, ord=2) ** 1.5)
     )
-    L_nu /= 1e4
     log(f"{L_nu=}", verbose=verbose)
     assert L_nu > 0
-    x0 = rng.random(n) * 1e5
+    x0 = np.zeros(n)
 
     algo_ngm = NormalizedGradientMethodHoelder(
         obj=obj,
@@ -150,7 +144,7 @@ def _run_gas_network_experiment(verbose: bool, interactive: bool):
         nu=nu,
         epsilon=_EPSILON,
         delta=_DELTA,
-        max_iter=50,
+        max_iter=200,
     )
 
     style = LineStyle()
