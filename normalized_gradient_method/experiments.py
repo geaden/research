@@ -15,7 +15,11 @@ from common.utils import log
 from common.objectives import LogisticRegression
 from common.plot_utils import do_show_plot, preamble
 
-from objectives import GasNetworkObjective, TwoLayerNetwork
+from objectives import (
+    GasNetworkObjective,
+    NonConvexTwoLayerNetworkObjective,
+    TwoLayerNetwork,
+)
 
 _SEED = 103
 
@@ -28,11 +32,8 @@ def _plot_iterations_vs_epsilon(
     history: list[np.ndarray],
     obj: Any,
     f_star: float,
-    delta: float,
 ):
     """Helper to plot iterations vs epsilon comparison."""
-
-    n = len(history)
 
     practical_diff = np.array([obj(x) - f_star for x in history])
 
@@ -59,13 +60,6 @@ def _plot_iterations_vs_epsilon(
 
     valid_epsilons = np.array(valid_epsilons)
     practical_iterations = np.array(practical_iterations)
-
-    K_upper_bound = np.max(practical_iterations * valid_epsilons)
-
-    theoretical_base_term = n * np.log(n / delta)
-    C_estimated = K_upper_bound / ensure_non_zero(theoretical_base_term)
-
-    theoretical_iterations = C_estimated * (1 / valid_epsilons) * theoretical_base_term
 
     if len(valid_epsilons) > 0:
         num_samples = min(8, len(valid_epsilons))
@@ -94,15 +88,7 @@ def _plot_iterations_vs_epsilon(
             )
         )
 
-    ax.plot(valid_epsilons, practical_iterations, label="Practical")
-
-    ax.plot(
-        valid_epsilons,
-        theoretical_iterations,
-        label=r"Theoretical $O(\frac{1}{\varepsilon} n \log \frac{n}{\delta})$",
-        linestyle="--",
-    )
-
+    ax.plot(valid_epsilons, practical_iterations)
     ax.set_xlabel(r"$\varepsilon$")
     ax.set_ylabel(r"$N$")
     ax.set_xscale("log")
@@ -169,7 +155,7 @@ def _run_gas_network_experiment(verbose: bool, interactive: bool):
     axs[0].set_ylabel(r"$f^k-f^\ast$")
     axs[0].grid()
 
-    _plot_iterations_vs_epsilon(axs[1], algo_ngm.history, obj, f_star, _DELTA)
+    _plot_iterations_vs_epsilon(axs[1], algo_ngm.history, obj, f_star)
 
     plt.tight_layout()
     do_show_plot(filename="ngm.pgf", show_plot=True, interactive=interactive)
@@ -229,7 +215,7 @@ def _run_logistic_regression_experiment(verbose: bool, interactive: bool):
     axs[0].set_ylabel(r"$f^k-f^\ast$")
     axs[0].grid()
 
-    _plot_iterations_vs_epsilon(axs[1], algo_ngm.history, obj, f_star, _DELTA)
+    _plot_iterations_vs_epsilon(axs[1], algo_ngm.history, obj, f_star)
     plt.tight_layout()
     do_show_plot(filename="ngm_logreg.pgf", show_plot=True, interactive=interactive)
 
@@ -237,8 +223,6 @@ def _run_logistic_regression_experiment(verbose: bool, interactive: bool):
 def _run_two_layer_network_experiment(verbose: bool, interactive: bool):
     """
     Runs a two-layer network experiment using Normalized Gradient Method.
-    This uses a random feature model, where the first layer is fixed and random,
-    and only the second layer is trained.
     """
     nu = 1.0
 
@@ -247,9 +231,9 @@ def _run_two_layer_network_experiment(verbose: bool, interactive: bool):
 
     _, axs = plt.subplots(1, 2, figsize=(12, 6), dpi=100)
 
-    n_samples = 400
-    n_features = 20
-    n_hidden = 20
+    n_samples = 40
+    n_features = 10
+    n_hidden = 10
     rng = np.random.default_rng(_SEED)
     X = rng.random((n_samples, n_features))
 
@@ -260,12 +244,14 @@ def _run_two_layer_network_experiment(verbose: bool, interactive: bool):
     H_true = np.c_[H_true, np.ones(n_samples)]
     y = H_true @ true_w2 + rng.normal(0, 0.1, size=n_samples)
 
-    obj = TwoLayerNetwork(X=X, y=y, n_hidden=n_hidden, seed=_SEED)
+    obj = NonConvexTwoLayerNetworkObjective(X=X, y=y, n_hidden=n_hidden)
 
-    L_nu = np.linalg.norm(obj.A, ord=2) ** 2 / n_samples
+    L_nu = 1e-1
     log(f"{L_nu=}", verbose=verbose)
     assert L_nu > 0
-    x0 = np.zeros(n_hidden + 1)
+
+    n_params = (n_features * n_hidden) + n_hidden + (n_hidden + 1)
+    x0 = rng.normal(size=n_params) * 0.1
 
     algo_ngm = NormalizedGradientMethodHoelder(
         obj=obj,
@@ -273,7 +259,7 @@ def _run_two_layer_network_experiment(verbose: bool, interactive: bool):
         nu=nu,
         epsilon=_EPSILON,
         delta=_DELTA,
-        max_iter=10000,
+        max_iter=1000,
     )
 
     style = LineStyle()
@@ -297,7 +283,7 @@ def _run_two_layer_network_experiment(verbose: bool, interactive: bool):
     axs[0].set_ylabel(r"$f^k-f^\ast$")
     axs[0].grid()
 
-    _plot_iterations_vs_epsilon(axs[1], algo_ngm.history, obj, f_star, _DELTA)
+    _plot_iterations_vs_epsilon(axs[1], algo_ngm.history, obj, f_star)
     plt.tight_layout()
     do_show_plot(filename="ngm_2layer.pgf", show_plot=True, interactive=interactive)
 

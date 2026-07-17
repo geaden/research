@@ -1,4 +1,5 @@
 import numpy as np
+from typing import Tuple
 from common.objectives import Objective
 
 
@@ -68,3 +69,57 @@ class TwoLayerNetwork(Objective):
     def grad(self, x: np.ndarray) -> np.ndarray:
         """x includes weights and bias for the output layer."""
         return self.A.T @ (self.A @ x - self._y)
+
+
+class NonConvexTwoLayerNetworkObjective(Objective):
+    """
+    Objective function for a two-layer network where all weights are trained.
+    This results in a non-convex optimization problem.
+    The loss is 0.5 * ||activation(X @ w1.T + b1) @ w2 - y||^2.
+    """
+
+    def __init__(self, X: np.ndarray, y: np.ndarray, n_hidden: int):
+        self.X = X
+        self.y = y
+        self.n_samples, self.n_features = X.shape
+        self.n_hidden = n_hidden
+
+    def _unpack_params(
+        self, params: np.ndarray
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        w1_size = self.n_hidden * self.n_features
+        b1_size = self.n_hidden
+        w1 = params[:w1_size].reshape((self.n_hidden, self.n_features))
+        b1 = params[w1_size : w1_size + b1_size]
+        w2 = params[w1_size + b1_size :]
+        return w1, b1, w2
+
+    def _sigmoid(self, z: np.ndarray) -> np.ndarray:
+        return 1 / (1 + np.exp(-z))
+
+    def __call__(self, params: np.ndarray) -> float:
+        w1, b1, w2 = self._unpack_params(params)
+        h = self._sigmoid(self.X @ w1.T + b1)
+        h_with_bias = np.c_[h, np.ones(self.n_samples)]
+        y_pred = h_with_bias @ w2
+        return 0.5 * np.sum((y_pred - self.y) ** 2)
+
+    def _sigmoid_grad(self, z: np.ndarray) -> np.ndarray:
+        s = self._sigmoid(z)
+        return s * (1 - s)
+
+    def grad(self, params: np.ndarray) -> np.ndarray:
+        w1, b1, w2 = self._unpack_params(params)
+
+        z1 = self.X @ w1.T + b1
+        h = self._sigmoid(z1)
+        h_with_bias = np.c_[h, np.ones(self.n_samples)]
+        y_pred = h_with_bias @ w2
+        error = (y_pred - self.y).reshape(-1, 1)
+        grad_w2 = (h_with_bias.T @ error).flatten()
+        w2_without_bias = w2[:-1].reshape(1, -1)
+        grad_h = error @ w2_without_bias
+        grad_z1 = grad_h * self._sigmoid_grad(z1)
+        grad_b1 = np.sum(grad_z1, axis=0)
+        grad_w1 = grad_z1.T @ self.X
+        return np.concatenate([grad_w1.flatten(), grad_b1, grad_w2])
