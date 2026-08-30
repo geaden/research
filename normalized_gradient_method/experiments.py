@@ -4,12 +4,9 @@ from typing import Any
 import numpy as np
 import matplotlib.pyplot as plt
 
-from common.math_utils import ensure_non_zero
 from common.latex_utils import latex_table
-from common.math_utils import ensure_non_zero, significant_figures
-from common.oracles.lmo import L2BallLMO
+from common.math_utils import significant_figures
 from common.plotting.line_style import LineStyle
-from stopping_rules_robust_fw.algorithms import AdaptiveFrankWolfeRobustComparison
 from algorithms import NormalizedGradientMethodHoelder
 from common.utils import log
 from common.objectives import LogisticRegression
@@ -18,7 +15,6 @@ from common.plot_utils import do_show_plot, preamble
 from objectives import (
     GasNetworkObjective,
     NonConvexTwoLayerNetworkObjective,
-    TwoLayerNetwork,
 )
 
 _SEED = 103
@@ -32,7 +28,7 @@ def _plot_iterations_vs_epsilon(
     history: list[np.ndarray],
     obj: Any,
     f_star: float,
-):
+) -> list[tuple[str, float]]:
     """Helper to plot iterations vs epsilon comparison."""
 
     practical_diff = np.array([obj(x) - f_star for x in history])
@@ -41,10 +37,12 @@ def _plot_iterations_vs_epsilon(
     if len(positive_diffs) < 2:
         return  # Not enough data to plot
 
-    min_eps = 1e-8
-    max_eps = 1e-1
+    min_eps = 1e-4
+    max_eps = 1e-2
 
-    epsilons = np.logspace(np.log10(min_eps), np.log10(max_eps), num=10)
+    _TOTAL_POINTS = 10
+
+    epsilons = np.logspace(np.log10(min_eps), np.log10(max_eps), num=_TOTAL_POINTS)
 
     practical_iterations = []
     valid_epsilons = []
@@ -61,11 +59,12 @@ def _plot_iterations_vs_epsilon(
     valid_epsilons = np.array(valid_epsilons)
     practical_iterations = np.array(practical_iterations)
 
+    table_values = []
+    assert len(valid_epsilons) > 0
     if len(valid_epsilons) > 0:
-        num_samples = min(8, len(valid_epsilons))
+        num_samples = min(_TOTAL_POINTS, len(valid_epsilons))
         indices = np.linspace(0, len(valid_epsilons) - 1, num_samples, dtype=int)
 
-        table_values = []
         for i in indices:
             eps_val = valid_epsilons[i]
             N_practical = practical_iterations[i]
@@ -80,22 +79,19 @@ def _plot_iterations_vs_epsilon(
                 )
             table_values.append((eps_formatted, N_practical))
 
-        print(
-            latex_table(
-                caption=r"Количество итераций $N$ для заданной точности $\varepsilon$",
-                values=table_values,
-                headers=[r"$\varepsilon$", r"$N$"],
-            )
-        )
-
     ax.plot(valid_epsilons, practical_iterations)
     ax.set_xlabel(r"$\varepsilon$")
     ax.set_ylabel(r"$N$")
     ax.set_xscale("log")
     ax.set_yscale("log")
 
+    return table_values
 
-def _run_gas_network_experiment(verbose: bool, interactive: bool):
+
+def _run_gas_network_experiment(
+    verbose: bool, interactive: bool
+) -> list[tuple[float, float]]:
+    np.random.seed(_SEED)
     nu = 0.5
 
     if not interactive:
@@ -155,16 +151,21 @@ def _run_gas_network_experiment(verbose: bool, interactive: bool):
     axs[0].set_ylabel(r"$f^k-f^\ast$")
     axs[0].grid()
 
-    _plot_iterations_vs_epsilon(axs[1], algo_ngm.history, obj, f_star)
+    table_values = _plot_iterations_vs_epsilon(axs[1], algo_ngm.history, obj, f_star)
 
     plt.tight_layout()
     do_show_plot(filename="ngm.pgf", show_plot=True, interactive=interactive)
 
+    return table_values
 
-def _run_logistic_regression_experiment(verbose: bool, interactive: bool):
+
+def _run_logistic_regression_experiment(
+    verbose: bool, interactive: bool
+) -> list[tuple[float, float]]:
     """
     Runs a logistic regression experiment using Normalized Gradient Method.
     """
+    np.random.seed(_SEED)
     nu = 1.0
 
     if not interactive:
@@ -215,15 +216,19 @@ def _run_logistic_regression_experiment(verbose: bool, interactive: bool):
     axs[0].set_ylabel(r"$f^k-f^\ast$")
     axs[0].grid()
 
-    _plot_iterations_vs_epsilon(axs[1], algo_ngm.history, obj, f_star)
+    table_values = _plot_iterations_vs_epsilon(axs[1], algo_ngm.history, obj, f_star)
     plt.tight_layout()
     do_show_plot(filename="ngm_logreg.pgf", show_plot=True, interactive=interactive)
+    return table_values
 
 
-def _run_two_layer_network_experiment(verbose: bool, interactive: bool):
+def _run_two_layer_network_experiment(
+    verbose: bool, interactive: bool
+) -> list[tuple[float, float]]:
     """
-    Runs a two-layer network experiment using Normalized Gradient Method.
+    Runs a non-convex two-layer network experiment using Normalized Gradient Method.
     """
+    np.random.seed(_SEED)
     nu = 1.0
 
     if not interactive:
@@ -246,7 +251,7 @@ def _run_two_layer_network_experiment(verbose: bool, interactive: bool):
 
     obj = NonConvexTwoLayerNetworkObjective(X=X, y=y, n_hidden=n_hidden)
 
-    L_nu = 1e-1
+    L_nu = 3e-1
     log(f"{L_nu=}", verbose=verbose)
     assert L_nu > 0
 
@@ -259,12 +264,12 @@ def _run_two_layer_network_experiment(verbose: bool, interactive: bool):
         nu=nu,
         epsilon=_EPSILON,
         delta=_DELTA,
-        max_iter=1000,
+        max_iter=1500,
     )
 
     style = LineStyle()
 
-    log("Running Two-Layer Network Experiment...", verbose=verbose)
+    log("Running Non-convex Two-Layer Network Experiment...", verbose=verbose)
     result_ngm = algo_ngm.run(x0)
     log(f"Optimal value (NGM): {obj(result_ngm.x_opt)}", verbose=verbose)
 
@@ -283,14 +288,46 @@ def _run_two_layer_network_experiment(verbose: bool, interactive: bool):
     axs[0].set_ylabel(r"$f^k-f^\ast$")
     axs[0].grid()
 
-    _plot_iterations_vs_epsilon(axs[1], algo_ngm.history, obj, f_star)
+    table_values = _plot_iterations_vs_epsilon(axs[1], algo_ngm.history, obj, f_star)
     plt.tight_layout()
     do_show_plot(filename="ngm_2layer.pgf", show_plot=True, interactive=interactive)
+    return table_values
 
 
 def run_experiments(verbose: bool, interactive: bool):
-    _run_gas_network_experiment(verbose, interactive)
-    _run_logistic_regression_experiment(verbose, interactive)
-    _run_two_layer_network_experiment(verbose, interactive)
+    table_values = []
+    table_values.append(_run_gas_network_experiment(verbose, interactive))
+    table_values.append(_run_logistic_regression_experiment(verbose, interactive))
+    table_values.append(_run_two_layer_network_experiment(verbose, interactive))
+
+    epsilons: dict[float, list[object]] = {k: [v] for k, v in table_values[0]}
+
+    table_headers = [
+        r"$\varepsilon$",
+        "Газотранспортная сеть",
+        "Логистическая регрессия",
+        "Двухслойная нейросеть",
+    ]
+
+    for value in table_values[1:]:
+        for epsilon, N in value:
+            if epsilon in epsilons:
+                epsilons[epsilon].append(N)
+
+    table: list[tuple[str, float, float, float]] = []
+
+    for epsilon in epsilons:
+        table.append(tuple([epsilon] + epsilons[epsilon]))
+
+    table = sorted(table, key=lambda k: k[0], reverse=True)
+
+    print(
+        latex_table(
+            caption=r"Количество итераций в зависимости от заданной точности $\varepsilon$ для задач "
+            "газотранспортной сети, логистической регрессии, двухслойной нейросети.",
+            values=table,
+            headers=table_headers,
+        )
+    )
 
     log("Done.", verbose=verbose)

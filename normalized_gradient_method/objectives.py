@@ -94,15 +94,15 @@ class NonConvexTwoLayerNetworkObjective(Objective):
         w2 = params[w1_size + b1_size :]
         return w1, b1, w2
 
-    def _sigmoid(self, z: np.ndarray) -> np.ndarray:
-        return 1 / (1 + np.exp(-z))
-
     def __call__(self, params: np.ndarray) -> float:
         w1, b1, w2 = self._unpack_params(params)
         h = self._sigmoid(self.X @ w1.T + b1)
         h_with_bias = np.c_[h, np.ones(self.n_samples)]
         y_pred = h_with_bias @ w2
         return 0.5 * np.sum((y_pred - self.y) ** 2)
+
+    def _sigmoid(self, z: np.ndarray) -> np.ndarray:
+        return 1 / (1 + np.exp(-z))
 
     def _sigmoid_grad(self, z: np.ndarray) -> np.ndarray:
         s = self._sigmoid(z)
