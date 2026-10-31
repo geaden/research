@@ -17,3 +17,6 @@ junit.xml
 
 # PDF
 *.pdf
+
+# TeX
+build
