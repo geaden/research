@@ -10,6 +10,11 @@ set -euf -o pipefail  # Stop at failure.
 WD=$1
 shift 1
 export PYTHONPATH="$(pwd)"
+# Use project virtual environment if it exists.
+PYTHON=python3
+if [ -x "$(pwd)/.venv/bin/python3" ]; then
+    PYTHON="$(pwd)/.venv/bin/python3"
+fi
 pushd $WD
-python3 main.py "$@"
+$PYTHON main.py "$@"
 popd

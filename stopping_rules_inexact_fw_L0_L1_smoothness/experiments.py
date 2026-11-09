@@ -1,365 +1,423 @@
-"""Experiments for Frank-Wolfe with mixed inexactness and (L0, L1)-smoothness."""
+"""Experiments for Frank-Wolfe with composite (mixed) gradient inexactness and
+(L0, L1)-smoothness on the logistic regression problem.
+
+The feasible set is the Euclidean l2-ball (a strongly convex set).
+
+All methods keep running after the stopping rule G̃(x^k) ≤ Δ fires; the
+iteration at which the rule fired is marked on the plots by a vertical line
+(of the same color as the corresponding curve) and a star marker.
+
+Produced figures (PGF, ``images/`` directory), named ``denisov{n}.pgf`` where
+``n`` is the number of the experiment:
+    * ``denisov1.pgf`` -- proposed vs classical FW on the l2-ball.
+    * ``denisov2.pgf`` -- influence of the absolute inexactness δ.
+"""
 
 import os
+from dataclasses import dataclass, field
+from typing import Callable, Optional
+
 import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
-from dataclasses import dataclass
-from typing import List, Dict, Tuple
 
-from common.oracles.lmo import SimplexLMO
-from common.plotting import LineStyle
+from common.math_utils import non_singular_matrix
+from common.objectives import Objective, LogisticRegression
+from common.oracles.lmo import LMO, L2BallLMO
 from common.plot_utils import preamble, do_show_plot
 from common.utils import log
 
 try:
     # Try relative imports first (when run as module)
-    from .objectives import ShiftedPointProblem
     from .oracles import MixedInexactOracle, MixedInexactObjectiveWrapper
     from .algorithms import ProposedMixedInexactFW, ClassicalMixedInexactFW
     from .stopping_rules import InexactDualGapStoppingRule
 except ImportError:
     # Fall back to absolute imports (when run directly)
-    from objectives import ShiftedPointProblem
     from oracles import MixedInexactOracle, MixedInexactObjectiveWrapper
     from algorithms import ProposedMixedInexactFW, ClassicalMixedInexactFW
     from stopping_rules import InexactDualGapStoppingRule
 
 
+_COLORS = ["#1f77b4", "#d62728", "#2ca02c", "#9467bd", "#ff7f0e", "#8c564b"]
+_LINESTYLES = ["-", "--", "-.", ":", (0, (5, 1)), (0, (3, 1, 1, 1))]
+_FIGSIZE = (14, 5.5)
+_FIGSIZE_SINGLE = (8, 5.5)
+_DPI = 100
+_FLOOR = 1e-10
+
+
 @dataclass
 class ExperimentConfig:
-    """Configuration for experiment."""
+    """Configuration of the logistic regression experiments."""
 
-    dim: int = 50
-    L0: float = 1e-4
-    L1: float = 2.5
-    shift_scale: float = 1.2
-    alpha: float = 0.04
-    delta: float = 1e-3
-    target_precision: float = 2e-3
-    max_iter: int = 120
-    seed: int = 42
+    n: int = 250  # problem dimension (= number of samples)
+    alpha: float = 0.05  # relative inexactness
+    delta: float = 1e-3  # absolute inexactness
+    target_precision: float = 5e-3  # Δ
+    radius: float = 1.0  # radius of the l2-ball
+    max_iter: int = 300
+    seed: int = 74
 
 
 @dataclass
-class ExperimentResult:
-    """Results from running an algorithm."""
+class LogRegProblem:
+    """Logistic regression problem on a feasible set."""
 
-    algorithm_name: str
-    history: List[np.ndarray]
-    gap_history: List[Dict]
-    iterations: int
-    final_x: np.ndarray
-    objective_values: List[float]
+    obj: Objective
+    lmo: LMO
+    project: Callable[[np.ndarray], np.ndarray]
+    x0: np.ndarray
+    L0: float
+    L1: float
+    L: float
+    D: float
+    f_star: float = field(default=np.nan)
 
 
-def setup_problem(
-    config: ExperimentConfig,
-) -> Tuple[ShiftedPointProblem, SimplexLMO, np.ndarray]:
+@dataclass
+class Curve:
+    """Trajectory of a single run."""
+
+    label: str
+    residuals: list[float]
+    stopped_at: Optional[int]
+
+
+# ---------------------------------------------------------------------------
+# Problem setup
+# ---------------------------------------------------------------------------
+
+
+def _logreg_data(config: ExperimentConfig) -> tuple[np.ndarray, np.ndarray]:
+    rng = np.random.default_rng(config.seed)
+    A = non_singular_matrix(config.n, 0.75, 1.0, -1.0, 1.0, rng).astype(np.float64)
+    y = rng.choice([-1, 1], size=(config.n,))
+    return A, y
+
+
+def _smoothness_constants(A: np.ndarray) -> tuple[float, float, float]:
+    """Return (L0, L1, L) for the logistic regression.
+
+    For every summand φ_i(x) = log(1 + exp(-y_i <a_i, x>)) one has
+    ||∇²φ_i(x)|| ≤ ||a_i|| ||∇φ_i(x)||, i.e. (0, ||a_i||)-smoothness;
+    we use L1 = max_i ||a_i|| and a small L0, as in the experiments of
+    the (L0, L1)-Frank-Wolfe paper. L is the global Lipschitz constant.
     """
-    Set up the optimization problem.
+    n = A.shape[0]
+    row_norms = np.linalg.norm(A, axis=1)
+    L1 = float(row_norms.max())
+    L = float(np.linalg.norm(A, 2) ** 2 / (4 * n))
+    L0 = 1e-2 * L
+    return L0, L1, L
 
-    Args:
-        config: Experiment configuration
 
-    Returns:
-        Tuple of (problem, lmo, initial_point)
-    """
-    problem = ShiftedPointProblem(
-        dim=config.dim,
-        L0=config.L0,
-        L1=config.L1,
-        shift_scale=config.shift_scale,
-        seed=config.seed,
+def _project_l2_ball(radius: float) -> Callable[[np.ndarray], np.ndarray]:
+    def project(x: np.ndarray) -> np.ndarray:
+        nrm = np.linalg.norm(x)
+        return x if nrm <= radius else x * (radius / nrm)
+
+    return project
+
+
+def _reference_optimum(problem: LogRegProblem, iterations: int = 20_000) -> float:
+    """Compute f* by accelerated projected gradient (FISTA) with exact gradients."""
+    x = problem.x0.copy()
+    z = x.copy()
+    t = 1.0
+    step = 1.0 / problem.L
+    for _ in range(iterations):
+        x_next = problem.project(z - step * problem.obj.grad(z))
+        t_next = 0.5 * (1.0 + np.sqrt(1.0 + 4.0 * t * t))
+        z = x_next + (t - 1.0) / t_next * (x_next - x)
+        x, t = x_next, t_next
+    return float(problem.obj(x))
+
+
+def setup_l2ball_problem(config: ExperimentConfig) -> LogRegProblem:
+    A, y = _logreg_data(config)
+    L0, L1, L = _smoothness_constants(A)
+    problem = LogRegProblem(
+        obj=LogisticRegression(A, y),
+        lmo=L2BallLMO(radius=config.radius),
+        project=_project_l2_ball(config.radius),
+        x0=np.zeros(config.n),
+        L0=L0,
+        L1=L1,
+        L=L,
+        D=2.0 * config.radius,
     )
-
-    lmo = SimplexLMO(radius=1.0)
-    x0 = np.ones(config.dim) / float(config.dim)
-
-    return problem, lmo, x0
+    problem.f_star = _reference_optimum(problem)
+    return problem
 
 
-def run_proposed_method(
-    problem: ShiftedPointProblem,
-    lmo: SimplexLMO,
-    x0: np.ndarray,
-    config: ExperimentConfig,
-    verbose: bool = False,
-) -> ExperimentResult:
-    """
-    Run the proposed Frank-Wolfe method with adaptive step.
+# ---------------------------------------------------------------------------
+# Running methods
+# ---------------------------------------------------------------------------
 
-    Args:
-        problem: Optimization problem
-        lmo: Linear minimization oracle
-        x0: Initial point
-        config: Experiment configuration
-        verbose: Whether to print progress
 
-    Returns:
-        Experiment results
-    """
-    # Create oracle and wrapped objective
-    oracle = MixedInexactOracle(
-        obj=problem,
-        alpha=config.alpha,
-        delta=config.delta,
-        rng=np.random.default_rng(config.seed),
-    )
+def _curve_from(
+    label: str, algorithm, problem: LogRegProblem
+) -> Curve:
+    residuals = [max(_FLOOR, problem.obj(x) - problem.f_star) for x in algorithm.history]
+    return Curve(label=label, residuals=residuals, stopped_at=algorithm.stopped_at)
 
-    wrapped_obj = MixedInexactObjectiveWrapper(problem, oracle)
 
-    # Create stopping rule
+def run_proposed(
+    problem: LogRegProblem,
+    oracle,
+    target_precision: float,
+    max_iter: int,
+    label: str,
+) -> Curve:
+    """Run the proposed method; it does NOT stop when the rule fires."""
+    params = oracle.parameters
     stopping_rule = InexactDualGapStoppingRule(
-        tol=config.target_precision, alpha=config.alpha, delta=config.delta
+        tol=target_precision, alpha=params["alpha"], delta=params["delta"]
     )
-
-    # Run algorithm
     algorithm = ProposedMixedInexactFW(
-        obj=wrapped_obj,
-        lmo=lmo,
-        L0=config.L0,
-        L1=config.L1,
+        obj=MixedInexactObjectiveWrapper(problem.obj, oracle),
+        lmo=problem.lmo,
+        L0=problem.L0,
+        L1=problem.L1,
         stopping_rule=stopping_rule,
-        max_iter=config.max_iter,
+        max_iter=max_iter,
+        stop_on_rule=False,
     )
+    algorithm.run(problem.x0)
+    return _curve_from(label, algorithm, problem)
 
-    result = algorithm.run(x0)
-    metrics = algorithm.metrics
 
-    # Compute objective values
-    obj_values = [problem(x) for x in algorithm.history]
-
-    if verbose:
-        log(
-            f"Proposed method stopped at iteration {metrics['iterations']}",
-            verbose=verbose,
-        )
-        log(f"Final objective value: {obj_values[-1]:.6f}", verbose=verbose)
-
-    return ExperimentResult(
-        algorithm_name="Предложенный (короткий шаг h_k)",
-        history=algorithm.history,
-        gap_history=metrics["gap_history"],
-        iterations=metrics["iterations"],
-        final_x=result.x_opt,
-        objective_values=obj_values,
+def run_classical(
+    problem: LogRegProblem,
+    oracle,
+    target_precision: float,
+    max_iter: int,
+    label: str,
+) -> Curve:
+    """Run classical FW with h_k = 2/(k+2); the stopping rule is only marked."""
+    params = oracle.parameters
+    stopping_rule = InexactDualGapStoppingRule(
+        tol=target_precision, alpha=params["alpha"], delta=params["delta"]
     )
-
-
-def run_classical_method(
-    problem: ShiftedPointProblem,
-    lmo: SimplexLMO,
-    x0: np.ndarray,
-    config: ExperimentConfig,
-    verbose: bool = False,
-) -> ExperimentResult:
-    """
-    Run classical Frank-Wolfe with 2/(k+2) step.
-
-    Args:
-        problem: Optimization problem
-        lmo: Linear minimization oracle
-        x0: Initial point
-        config: Experiment configuration
-        verbose: Whether to print progress
-
-    Returns:
-        Experiment results
-    """
-    # Create oracle and wrapped objective
-    oracle = MixedInexactOracle(
-        obj=problem,
-        alpha=config.alpha,
-        delta=config.delta,
-        rng=np.random.default_rng(
-            config.seed + 1
-        ),  # Different seed for fair comparison
-    )
-
-    wrapped_obj = MixedInexactObjectiveWrapper(problem, oracle)
-
-    # Run algorithm
     algorithm = ClassicalMixedInexactFW(
-        obj=wrapped_obj,
-        lmo=lmo,
-        alpha=config.alpha,
-        delta=config.delta,
-        max_iter=config.max_iter,
+        obj=MixedInexactObjectiveWrapper(problem.obj, oracle),
+        lmo=problem.lmo,
+        alpha=params["alpha"],
+        delta=params["delta"],
+        max_iter=max_iter,
+        stopping_rule=stopping_rule,
     )
+    algorithm.run(problem.x0)
+    return _curve_from(label, algorithm, problem)
 
-    result = algorithm.run(x0)
-    metrics = algorithm.metrics
 
-    # Compute objective values
-    obj_values = [problem(x) for x in algorithm.history]
+# ---------------------------------------------------------------------------
+# Plotting helpers
+# ---------------------------------------------------------------------------
 
-    if verbose:
+
+def _style(i: int) -> dict:
+    return {
+        "color": _COLORS[i % len(_COLORS)],
+        "linestyle": _LINESTYLES[i % len(_LINESTYLES)],
+        "linewidth": 1.8,
+    }
+
+
+def _mark_stop(ax: plt.Axes, curve: Curve, values: list[float], i: int) -> None:
+    """Mark the iteration at which the stopping rule fired."""
+    if curve.stopped_at is None:
+        return
+    k = curve.stopped_at
+    color = _COLORS[i % len(_COLORS)]
+    ax.axvline(k, color=color, linestyle=":", linewidth=1.4, alpha=0.9)
+    ax.plot(k, values[min(k, len(values) - 1)], "*", color=color, markersize=12)
+
+
+def _stop_label(curve: Curve) -> str:
+    if curve.stopped_at is None:
+        return curve.label + r" (правило не сработало)"
+    return curve.label + rf" ($N={curve.stopped_at}$)"
+
+
+def plot_residuals(ax: plt.Axes, curves: list[Curve], title: str) -> None:
+    for i, curve in enumerate(curves):
+        ax.plot(
+            np.arange(len(curve.residuals)),
+            curve.residuals,
+            label=_stop_label(curve),
+            **_style(i),
+        )
+        _mark_stop(ax, curve, curve.residuals, i)
+    ax.set_yscale("log")
+    ax.set_xlabel(r"Итерация $k$")
+    ax.set_ylabel(r"$f(x^k) - f^*$")
+    ax.set_title(title)
+    ax.legend(frameon=True, facecolor="white", framealpha=0.9, fontsize=9)
+    ax.grid(True, alpha=0.3)
+
+
+def _figure_name(n: int) -> str:
+    """Name of the PGF file of the n-th experiment."""
+    return f"denisov{n}.pgf"
+
+
+def _save(filename: str, interactive: bool, verbose: bool) -> None:
+    module_dir = os.path.dirname(os.path.abspath(__file__))
+    os.makedirs(os.path.join(module_dir, "images"), exist_ok=True)
+    original_dir = os.getcwd()
+    try:
+        os.chdir(module_dir)
+        plt.tight_layout()
+        do_show_plot(
+            filename=filename,
+            show_plot=True,
+            interactive=interactive,
+            should_draw=not interactive,
+        )
+        log(f"Saved images/{filename}", verbose=verbose)
+    finally:
+        os.chdir(original_dir)
+    plt.close("all")
+
+
+# ---------------------------------------------------------------------------
+# Experiments
+# ---------------------------------------------------------------------------
+
+
+def experiment_proposed_vs_classical(
+    problem: LogRegProblem,
+    config: ExperimentConfig,
+    filename: str,
+    interactive: bool,
+    verbose: bool,
+) -> list[Curve]:
+    """Experiment 1: proposed method vs classical FW on the l2-ball."""
+    log("Experiment 1: proposed vs classical on the l2-ball", verbose=verbose)
+
+    def oracle(seed_shift: int) -> MixedInexactOracle:
+        return MixedInexactOracle(
+            obj=problem.obj,
+            alpha=config.alpha,
+            delta=config.delta,
+            rng=np.random.default_rng(config.seed + seed_shift),
+        )
+
+    curves = [
+        run_proposed(
+            problem,
+            oracle(0),
+            config.target_precision,
+            config.max_iter,
+            r"Алгоритм~1, шаг $h_k$",
+        ),
+        run_classical(
+            problem,
+            oracle(1),
+            config.target_precision,
+            config.max_iter,
+            r"FW, шаг $\frac{2}{k+2}$",
+        ),
+    ]
+
+    fig, ax = plt.subplots(1, 1, figsize=_FIGSIZE_SINGLE, dpi=_DPI)
+    plot_residuals(ax, curves, r"Невязка по функции")
+    _save(filename, interactive, verbose)
+    _log_curves(curves, verbose)
+    return curves
+
+
+def experiment_absolute_inexactness(
+    problem: LogRegProblem,
+    config: ExperimentConfig,
+    filename: str,
+    interactive: bool,
+    verbose: bool,
+) -> None:
+    """Experiment 2: influence of the absolute inexactness δ with fixed α."""
+    log("Experiment 2: influence of absolute inexactness", verbose=verbose)
+
+    deltas_curves = [0.0, 1e-3, 1e-2, 3e-2]
+    curves = []
+    for delta in deltas_curves:
+        oracle = MixedInexactOracle(
+            obj=problem.obj,
+            alpha=config.alpha,
+            delta=delta,
+            rng=np.random.default_rng(config.seed),
+        )
+        curves.append(
+            run_proposed(
+                problem,
+                oracle,
+                config.target_precision,
+                config.max_iter,
+                rf"$\delta={delta:g}$",
+            )
+        )
+
+    # Residual at the moment the stopping rule fires vs δ and the
+    # theoretical guarantee f(x^N) - f* ≤ Δ + 2 ε D.
+    deltas_grid = np.linspace(0.0, 4e-2, 17)
+    residual_at_stop = []
+    bound = []
+    stop_iters = []
+    for delta in deltas_grid:
+        oracle = MixedInexactOracle(
+            obj=problem.obj,
+            alpha=config.alpha,
+            delta=delta,
+            rng=np.random.default_rng(config.seed),
+        )
+        curve = run_proposed(
+            problem, oracle, config.target_precision, config.max_iter, ""
+        )
+        k = curve.stopped_at if curve.stopped_at is not None else config.max_iter
+        stop_iters.append(k)
+        residual_at_stop.append(curve.residuals[k])
+        M = np.linalg.norm(problem.obj.grad(problem.x0)) * (1 + config.alpha) + delta
+        eps = (config.alpha * M + delta) / (1.0 - config.alpha)
+        bound.append(config.target_precision + 2.0 * eps * problem.D)
+
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=_FIGSIZE, dpi=_DPI)
+    plot_residuals(ax1, curves, r"(а) Невязка при различных $\delta$")
+
+    ax2.semilogy(
+        deltas_grid, residual_at_stop, "o-", color=_COLORS[0],
+        label=r"$f(x^N) - f^*$ в момент остановки",
+    )
+    ax2.semilogy(
+        deltas_grid, bound, "--", color=_COLORS[1],
+        label=r"Оценка $\Delta + 2\varepsilon D$",
+    )
+    ax2.set_xlabel(r"$\delta$")
+    ax2.set_ylabel(r"$f(x^N) - f^*$")
+    ax2.grid(True, alpha=0.3)
+    ax2r = ax2.twinx()
+    ax2r.plot(
+        deltas_grid, stop_iters, "s:", color=_COLORS[2],
+        label=r"Число итераций $N$",
+    )
+    ax2r.set_ylabel(r"$N$")
+    lines = ax2.get_lines() + ax2r.get_lines()
+    ax2.legend(lines, [ln.get_label() for ln in lines],
+               frameon=True, facecolor="white", framealpha=0.9, fontsize=9)
+    ax2.set_title(r"(б) Качество решения и момент остановки")
+    _save(filename, interactive, verbose)
+    _log_curves(curves, verbose)
+
+
+def _log_curves(curves: list[Curve], verbose: bool) -> None:
+    for curve in curves:
+        k = curve.stopped_at
+        res = curve.residuals[k] if k is not None else float("nan")
         log(
-            f"Classical method ran for {metrics['iterations']} iterations",
+            f"  {curve.label}: stop at {k}, residual at stop {res:.3e}, "
+            f"final residual {curve.residuals[-1]:.3e}",
             verbose=verbose,
         )
-        log(f"Final objective value: {obj_values[-1]:.6f}", verbose=verbose)
-
-    return ExperimentResult(
-        algorithm_name="Классический FW (шаг 2/(k+2))",
-        history=algorithm.history,
-        gap_history=metrics["gap_history"],
-        iterations=metrics["iterations"],
-        final_x=result.x_opt,
-        objective_values=obj_values,
-    )
-
-
-def plot_convergence(
-    proposed_result: ExperimentResult,
-    classical_result: ExperimentResult,
-    config: ExperimentConfig,
-    ax: plt.Axes,
-    verbose: bool = False,
-):
-    """
-    Plot convergence of objective function values.
-
-    Args:
-        proposed_result: Results from proposed method
-        classical_result: Results from classical method
-        config: Experiment configuration
-        ax: Matplotlib axes for plotting
-        verbose: Whether to print progress
-    """
-    # Compute f_star as minimum across both methods
-    f_star = (
-        min(
-            min(proposed_result.objective_values),
-            min(classical_result.objective_values),
-        )
-        - 1e-5
-    )
-
-    # Prepare data for proposed method
-    iters_p = list(range(len(proposed_result.objective_values)))
-    residuals_p = [max(1e-7, f - f_star) for f in proposed_result.objective_values]
-
-    # Prepare data for classical method
-    iters_c = list(range(len(classical_result.objective_values)))
-    residuals_c = [max(1e-7, f - f_star) for f in classical_result.objective_values]
-
-    # Plot convergence curves
-    ax.plot(
-        iters_p,
-        residuals_p,
-        "o-",
-        color="#1f77b4",
-        linewidth=2.2,
-        label=proposed_result.algorithm_name,
-        markersize=4,
-    )
-    ax.plot(
-        iters_c,
-        residuals_c,
-        "s--",
-        color="#d62728",
-        linewidth=1.8,
-        alpha=0.85,
-        label=classical_result.algorithm_name,
-        markersize=3,
-    )
-
-    # Mark stopping point for proposed method
-    stop_k = proposed_result.iterations
-    ax.axvline(stop_k, color="#2ca02c", linestyle=":", linewidth=2.0)
-    ax.plot(
-        stop_k,
-        residuals_p[stop_k] if stop_k < len(residuals_p) else residuals_p[-1],
-        "*",
-        color="#2ca02c",
-        markersize=14,
-        label=f"Остановка (k={stop_k})",
-    )
-
-    # Configure axes
-    ax.set_yscale("log")
-    ax.set_xlabel("Итерация $k$", fontsize=11)
-    ax.set_ylabel(r"$f(x^k) - f^*$", fontsize=11)
-    ax.set_title("(а) Сходимость невязки целевой функции", fontsize=12)
-    ax.legend(frameon=True, facecolor="white", framealpha=0.9, fontsize=9)
-    ax.grid(True, alpha=0.3)
-
-    if verbose:
-        log(f"Plotted convergence curves", verbose=verbose)
-
-
-def plot_dual_gap(
-    proposed_result: ExperimentResult,
-    classical_result: ExperimentResult,
-    config: ExperimentConfig,
-    ax: plt.Axes,
-    verbose: bool = False,
-):
-    """
-    Plot inexact dual gap trajectory.
-
-    Args:
-        proposed_result: Results from proposed method
-        classical_result: Results from classical method
-        config: Experiment configuration
-        ax: Matplotlib axes for plotting
-        verbose: Whether to print progress
-    """
-    # Extract gap values
-    iters_p = list(range(len(proposed_result.gap_history)))
-    gap_p = [g["tilde_G"] for g in proposed_result.gap_history]
-
-    iters_c = list(range(len(classical_result.gap_history)))
-    gap_c = [g["tilde_G"] for g in classical_result.gap_history]
-
-    # Plot gap trajectories
-    ax.plot(
-        iters_p,
-        gap_p,
-        "o-",
-        color="#1f77b4",
-        linewidth=2.2,
-        label=r"$\tilde{G}$ ($(L_0, L_1)$-обобщенная гладкость)",
-        markersize=4,
-    )
-    ax.plot(
-        iters_c,
-        gap_c,
-        "s--",
-        color="#d62728",
-        linewidth=1.8,
-        alpha=0.85,
-        label=r"$\tilde{G}$ ($h_k=\frac{2}{k+2}$)",
-        markersize=3,
-    )
-
-    # Add horizontal lines for reference
-    ax.axhline(
-        config.target_precision,
-        color="#2ca02c",
-        linestyle="-",
-        linewidth=2.0,
-        label=rf"Точность $\Delta = {config.target_precision}$",
-    )
-    ax.axhline(
-        0.0,
-        color="gray",
-        linestyle="-.",
-        linewidth=1.2,
-        label=r"Порог шума ($\tilde{G} \leq 0$)",
-    )
-
-    # Configure axes
-    ax.set_xlabel("Итерация $k$", fontsize=11)
-    ax.set_ylabel(r"$\tilde{G}(x^k)$", fontsize=11)
-    ax.set_title("(б) Динамика неточного зазора двойственности", fontsize=12)
-    ax.legend(frameon=True, facecolor="white", framealpha=0.9, fontsize=9)
-    ax.grid(True, alpha=0.3)
-
-    if verbose:
-        log(f"Plotted dual gap trajectories", verbose=verbose)
 
 
 def run_experiments(verbose: bool = False, interactive: bool = False):
@@ -371,106 +429,32 @@ def run_experiments(verbose: bool = False, interactive: bool = False):
         interactive: Whether to show plots interactively
     """
     log("=" * 80, verbose=verbose)
-    log("ЭКСПЕРИМЕНТЫ: Метод Франк-Вульфа со смешанной неточностью", verbose=verbose)
-    log("и (L0, L1)-обобщенной гладкостью", verbose=verbose)
+    log("Frank-Wolfe with composite gradient inexactness, logistic regression",
+        verbose=verbose)
     log("=" * 80, verbose=verbose)
 
-    # Configure matplotlib
     if not interactive:
         preamble()
     else:
         try:
             matplotlib.use("TkAgg")
-        except:
+        except Exception:
             log("TkAgg backend not available", verbose=verbose)
 
-    # Set up experiment configuration
     config = ExperimentConfig()
 
-    log(f"\nПараметры эксперимента:", verbose=verbose)
-    log(f"  Размерность: d = {config.dim}", verbose=verbose)
-    log(f"  Константы гладкости: L0 = {config.L0}, L1 = {config.L1}", verbose=verbose)
-    log(f"  Параметры шума: α = {config.alpha}, δ = {config.delta}", verbose=verbose)
-    log(f"  Целевая точность: Δ = {config.target_precision}", verbose=verbose)
-    log(f"  Максимум итераций: {config.max_iter}\n", verbose=verbose)
-
-    # Set up problem
-    problem, lmo, x0 = setup_problem(config)
-
-    # Run proposed method
-    log("Запуск предложенного метода...", verbose=verbose)
-    proposed_result = run_proposed_method(problem, lmo, x0, config, verbose)
-
-    # Run classical method
-    log("Запуск классического метода...", verbose=verbose)
-    classical_result = run_classical_method(problem, lmo, x0, config, verbose)
-
-    # Create plots
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5.5), dpi=100)
-
-    # Plot convergence
-    plot_convergence(proposed_result, classical_result, config, ax1, verbose)
-
-    # Plot dual gap
-    plot_dual_gap(proposed_result, classical_result, config, ax2, verbose)
-
-    # Set overall title
-    plt.suptitle(
-        r"Франк-Вульф со смешанной неточностью и $(L_0, L_1)$-гладкостью",
-        fontsize=13,
-        fontweight="bold",
-        y=1.02,
-    )
-
-    plt.tight_layout()
-
-    # Create images directory in module location
-    module_dir = os.path.dirname(os.path.abspath(__file__))
-    images_dir = os.path.join(module_dir, "images")
-    os.makedirs(images_dir, exist_ok=True)
-
-    # Save plots using the common function
-    # Note: do_show_plot expects filename relative to 'images/' directory
-    # We need to save in our module's images directory
-    original_dir = os.getcwd()
-    try:
-        # Change to module directory so 'images/' path works correctly
-        os.chdir(module_dir)
-
-        # Save as PGF for LaTeX inclusion
-        do_show_plot(
-            filename="denisov1.pgf",
-            show_plot=True,
-            interactive=interactive,
-            should_draw=False,
-        )
-
-        if verbose:
-            log(
-                f"График сохранен в {images_dir}/mixed_inexact_fw_experiments.pgf",
-                verbose=verbose,
-            )
-    finally:
-        # Restore original directory
-        os.chdir(original_dir)
-
-    if not interactive:
-        plt.close()
-
-    # Print summary statistics
-    log("\n" + "=" * 80, verbose=verbose)
-    log("ИТОГИ ЭКСПЕРИМЕНТА", verbose=verbose)
-    log("=" * 80, verbose=verbose)
-    log(f"Предложенный метод:", verbose=verbose)
-    log(f"  - Остановка на итерации: {proposed_result.iterations}", verbose=verbose)
+    l2ball = setup_l2ball_problem(config)
     log(
-        f"  - Финальная невязка: {proposed_result.objective_values[-1]:.6e}",
+        f"l2-ball: L0={l2ball.L0:.3g}, L1={l2ball.L1:.3g}, L={l2ball.L:.3g}, "
+        f"f*={l2ball.f_star:.6f}",
         verbose=verbose,
     )
-    log(f"Классический метод:", verbose=verbose)
-    log(f"  - Выполнено итераций: {classical_result.iterations}", verbose=verbose)
-    log(
-        f"  - Финальная невязка: {classical_result.objective_values[-1]:.6e}",
-        verbose=verbose,
+
+    experiment_proposed_vs_classical(
+        l2ball, config, _figure_name(1), interactive, verbose
     )
-    log("=" * 80, verbose=verbose)
+    experiment_absolute_inexactness(
+        l2ball, config, _figure_name(2), interactive, verbose
+    )
+
+    log("Done.", verbose=verbose)
