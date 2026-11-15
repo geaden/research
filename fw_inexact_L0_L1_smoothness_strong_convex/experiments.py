@@ -9,10 +9,12 @@ iteration at which the rule fired is marked on the plots by a vertical line
 
 Produced figures (PGF, ``images/`` directory), named ``denisov{n}.pgf`` where
 ``n`` is the number of the experiment:
-    * ``denisov1.pgf`` -- proposed vs classical FW on the l2-ball.
+    * ``denisov1.pgf`` -- proposed vs classical FW on synthetic data and on the
+      Breast Cancer Wisconsin dataset.
     * ``denisov2.pgf`` -- influence of the absolute inexactness δ.
 """
 
+import csv
 import os
 from dataclasses import dataclass, field
 from typing import Callable, Optional
@@ -51,13 +53,14 @@ _FLOOR = 1e-10
 class ExperimentConfig:
     """Configuration of the logistic regression experiments."""
 
-    n: int = 250  # problem dimension (= number of samples)
-    alpha: float = 0.05  # relative inexactness
-    delta: float = 1e-3  # absolute inexactness
-    target_precision: float = 5e-3  # Δ
+    n: int = 250  # synthetic problem dimension (= number of samples)
+    alpha: float = 2e-3  # relative inexactness
+    delta: float = 5e-4  # absolute inexactness
+    target_precision: float = 8e-3  # Δ
     radius: float = 1.0  # radius of the l2-ball
     max_iter: int = 300
     seed: int = 74
+    feature_scale: float = 4.0  # scaling factor for breast-cancer features
 
 
 @dataclass
@@ -91,9 +94,35 @@ class Curve:
 
 def _logreg_data(config: ExperimentConfig) -> tuple[np.ndarray, np.ndarray]:
     rng = np.random.default_rng(config.seed)
-    A = non_singular_matrix(config.n, 0.75, 1.0, -1.0, 1.0, rng).astype(np.float64)
-    y = rng.choice([-1, 1], size=(config.n,))
+    A_raw = non_singular_matrix(
+        config.n, 0.75, 1.0, -1.0, 1.0, rng
+    ).astype(np.float64)
+    w_true = rng.normal(size=config.n)
+    y = np.where(A_raw @ w_true >= 0.0, 1.0, -1.0)
+    ones = np.ones(config.n)
+    u = ones - (np.dot(ones, y) / config.n) * y
+    scale = 2.0 if config.n >= 50 else 1.0
+    A = scale * (A_raw + 0.25 * np.outer(u, ones))
     return A, y
+
+
+def _breast_cancer_data(
+    feature_scale: float = 4.0,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Load the Breast Cancer Wisconsin (Diagnostic) dataset."""
+    module_dir = os.path.dirname(os.path.abspath(__file__))
+    data_path = os.path.join(module_dir, "data", "breast_cancer.csv")
+    with open(data_path, "r", encoding="utf-8") as csv_file:
+        reader = csv.reader(csv_file)
+        next(reader)  # skip header
+        rows = [list(map(float, row)) for row in reader]
+    raw = np.asarray(rows, dtype=np.float64)
+    features = raw[:, :-1]
+    labels = np.where(raw[:, -1] > 0.5, 1.0, -1.0)
+    col_max = np.max(np.abs(features), axis=0)
+    col_max = np.where(col_max > 0.0, col_max, 1.0)
+    A = feature_scale * (features / col_max)
+    return A, labels
 
 
 def _smoothness_constants(A: np.ndarray) -> tuple[float, float, float]:
@@ -104,10 +133,10 @@ def _smoothness_constants(A: np.ndarray) -> tuple[float, float, float]:
     we use L1 = max_i ||a_i|| and a small L0, as in the experiments of
     the (L0, L1)-Frank-Wolfe paper. L is the global Lipschitz constant.
     """
-    n = A.shape[0]
+    m = A.shape[0]
     row_norms = np.linalg.norm(A, axis=1)
     L1 = float(row_norms.max())
-    L = float(np.linalg.norm(A, 2) ** 2 / (4 * n))
+    L = float(np.linalg.norm(A, 2) ** 2 / (4 * m))
     L0 = 1e-2 * L
     return L0, L1, L
 
@@ -120,7 +149,7 @@ def _project_l2_ball(radius: float) -> Callable[[np.ndarray], np.ndarray]:
     return project
 
 
-def _reference_optimum(problem: LogRegProblem, iterations: int = 20_000) -> float:
+def _reference_optimum(problem: LogRegProblem, iterations: int = 30_000) -> float:
     """Compute f* by accelerated projected gradient (FISTA) with exact gradients."""
     x = problem.x0.copy()
     z = x.copy()
@@ -134,21 +163,33 @@ def _reference_optimum(problem: LogRegProblem, iterations: int = 20_000) -> floa
     return float(problem.obj(x))
 
 
-def setup_l2ball_problem(config: ExperimentConfig) -> LogRegProblem:
-    A, y = _logreg_data(config)
+def _build_problem(
+    A: np.ndarray, y: np.ndarray, radius: float
+) -> LogRegProblem:
     L0, L1, L = _smoothness_constants(A)
+    dim = A.shape[1]
     problem = LogRegProblem(
         obj=LogisticRegression(A, y),
-        lmo=L2BallLMO(radius=config.radius),
-        project=_project_l2_ball(config.radius),
-        x0=np.zeros(config.n),
+        lmo=L2BallLMO(radius=radius),
+        project=_project_l2_ball(radius),
+        x0=np.zeros(dim),
         L0=L0,
         L1=L1,
         L=L,
-        D=2.0 * config.radius,
+        D=2.0 * radius,
     )
     problem.f_star = _reference_optimum(problem)
     return problem
+
+
+def setup_l2ball_problem(config: ExperimentConfig) -> LogRegProblem:
+    A, y = _logreg_data(config)
+    return _build_problem(A, y, config.radius)
+
+
+def setup_breast_cancer_problem(config: ExperimentConfig) -> LogRegProblem:
+    A, y = _breast_cancer_data(config.feature_scale)
+    return _build_problem(A, y, config.radius)
 
 
 # ---------------------------------------------------------------------------
@@ -287,16 +328,9 @@ def _save(filename: str, interactive: bool, verbose: bool) -> None:
 # ---------------------------------------------------------------------------
 
 
-def experiment_proposed_vs_classical(
-    problem: LogRegProblem,
-    config: ExperimentConfig,
-    filename: str,
-    interactive: bool,
-    verbose: bool,
+def _pair_curves(
+    problem: LogRegProblem, config: ExperimentConfig
 ) -> list[Curve]:
-    """Experiment 1: proposed method vs classical FW on the l2-ball."""
-    log("Experiment 1: proposed vs classical on the l2-ball", verbose=verbose)
-
     def oracle(seed_shift: int) -> MixedInexactOracle:
         return MixedInexactOracle(
             obj=problem.obj,
@@ -305,7 +339,7 @@ def experiment_proposed_vs_classical(
             rng=np.random.default_rng(config.seed + seed_shift),
         )
 
-    curves = [
+    return [
         run_proposed(
             problem,
             oracle(0),
@@ -322,11 +356,34 @@ def experiment_proposed_vs_classical(
         ),
     ]
 
-    fig, ax = plt.subplots(1, 1, figsize=_FIGSIZE_SINGLE, dpi=_DPI)
-    plot_residuals(ax, curves, r"Невязка по функции")
+
+def experiment_proposed_vs_classical(
+    problem: LogRegProblem,
+    config: ExperimentConfig,
+    filename: str,
+    interactive: bool,
+    verbose: bool,
+    breast_cancer_problem: Optional[LogRegProblem] = None,
+) -> list[Curve]:
+    """Experiment 1: proposed method vs classical FW on the l2-ball."""
+    log("Experiment 1: proposed vs classical on the l2-ball", verbose=verbose)
+
+    curves_syn = _pair_curves(problem, config)
+    _log_curves(curves_syn, verbose)
+
+    if breast_cancer_problem is not None:
+        curves_bc = _pair_curves(breast_cancer_problem, config)
+        log("Breast Cancer Wisconsin dataset:", verbose=verbose)
+        _log_curves(curves_bc, verbose)
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=_FIGSIZE, dpi=_DPI)
+        plot_residuals(ax1, curves_syn, r"(а) Синтетические данные")
+        plot_residuals(ax2, curves_bc, r"(б) Датасет Breast Cancer Wisconsin")
+    else:
+        fig, ax = plt.subplots(1, 1, figsize=_FIGSIZE_SINGLE, dpi=_DPI)
+        plot_residuals(ax, curves_syn, r"Невязка по функции")
+
     _save(filename, interactive, verbose)
-    _log_curves(curves, verbose)
-    return curves
+    return curves_syn
 
 
 def experiment_absolute_inexactness(
@@ -339,7 +396,7 @@ def experiment_absolute_inexactness(
     """Experiment 2: influence of the absolute inexactness δ with fixed α."""
     log("Experiment 2: influence of absolute inexactness", verbose=verbose)
 
-    deltas_curves = [0.0, 1e-3, 1e-2, 3e-2]
+    deltas_curves = [0.0, 1e-3, 2e-2, 6e-2]
     curves = []
     for delta in deltas_curves:
         oracle = MixedInexactOracle(
@@ -360,7 +417,7 @@ def experiment_absolute_inexactness(
 
     # Residual at the moment the stopping rule fires vs δ and the
     # theoretical guarantee f(x^N) - f* ≤ Δ + 2 ε D.
-    deltas_grid = np.linspace(0.0, 4e-2, 17)
+    deltas_grid = np.linspace(0.0, 6e-2, 13)
     residual_at_stop = []
     bound = []
     stop_iters = []
@@ -445,13 +502,26 @@ def run_experiments(verbose: bool = False, interactive: bool = False):
 
     l2ball = setup_l2ball_problem(config)
     log(
-        f"l2-ball: L0={l2ball.L0:.3g}, L1={l2ball.L1:.3g}, L={l2ball.L:.3g}, "
-        f"f*={l2ball.f_star:.6f}",
+        f"Synthetic l2-ball: L0={l2ball.L0:.3g}, L1={l2ball.L1:.3g}, "
+        f"L={l2ball.L:.3g}, f*={l2ball.f_star:.6f}",
+        verbose=verbose,
+    )
+
+    breast_cancer = setup_breast_cancer_problem(config)
+    log(
+        f"Breast Cancer l2-ball: L0={breast_cancer.L0:.3g}, "
+        f"L1={breast_cancer.L1:.3g}, L={breast_cancer.L:.3g}, "
+        f"f*={breast_cancer.f_star:.6f}",
         verbose=verbose,
     )
 
     experiment_proposed_vs_classical(
-        l2ball, config, _figure_name(1), interactive, verbose
+        l2ball,
+        config,
+        _figure_name(1),
+        interactive,
+        verbose,
+        breast_cancer_problem=breast_cancer,
     )
     experiment_absolute_inexactness(
         l2ball, config, _figure_name(2), interactive, verbose

@@ -7,6 +7,7 @@ from ..experiments import (
     _project_l2_ball,
     _smoothness_constants,
     setup_l2ball_problem,
+    setup_breast_cancer_problem,
     run_proposed,
     run_classical,
 )
@@ -64,4 +65,33 @@ def test_run_methods_on_l2ball():
         assert curve.stopped_at is not None
         assert min(curve.residuals) >= 0.0
     # Linear convergence of the proposed method on the strongly convex set.
+    assert proposed.residuals[-1] < classical.residuals[-1]
+
+
+def test_run_methods_on_breast_cancer():
+    """It should run the proposed and classical methods on the Breast Cancer dataset."""
+    config = ExperimentConfig(max_iter=150)
+    problem = setup_breast_cancer_problem(config)
+    oracle = MixedInexactOracle(
+        obj=problem.obj,
+        alpha=config.alpha,
+        delta=config.delta,
+        rng=np.random.default_rng(config.seed),
+    )
+
+    assert problem.D == pytest.approx(2.0)
+    assert np.isfinite(problem.f_star)
+
+    proposed = run_proposed(
+        problem, oracle, config.target_precision, config.max_iter, "proposed"
+    )
+    classical = run_classical(
+        problem, oracle, config.target_precision, config.max_iter, "classical"
+    )
+
+    for curve in (proposed, classical):
+        assert len(curve.residuals) == config.max_iter + 1
+        assert curve.stopped_at is not None
+        assert min(curve.residuals) >= 0.0
+    assert proposed.stopped_at < classical.stopped_at
     assert proposed.residuals[-1] < classical.residuals[-1]
